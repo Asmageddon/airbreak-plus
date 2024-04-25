@@ -53,6 +53,8 @@ void init_asv_data(asv_data_t *data) {
   data->asv_factor = 1.0f;
   data->final_ips = 0.0f;
 
+  data->asv_dampen = 0.0f;
+
   data->target_vol = 0.0f;
   data->target_vol2 = 0.0f;
 
@@ -67,7 +69,9 @@ void update_asv_data(asv_data_t* asv, tracking_t* tr) {
   // TODO: Wait for average error to stabilize before engaging ASV
   breath_t *current = &tr->current;
   breath_t *last = &tr->last;
+  breath_t *recent = &tr->recent;
 
+  // Handle starting a new breath
   if (tr->st_inhaling && tr->st_just_started && tr->st_valid_breath) { // New breath just started
     float asv_coeff3 = asv_coeff2;
     if (last->volume_max > asv->target_vol2) { asv_coeff3 *= 0.5f; }
@@ -87,8 +91,24 @@ void update_asv_data(asv_data_t* asv, tracking_t* tr) {
 
     asv->final_ips = 0.0f;
     asv->breath_count += 1;
+
+    // Handle ASV target dampening after hyperpneas.
+
+   if (asv_dampen_max > 0.0f) {
+      float error_volume = (last->volume_max - recent->volume_max) / (recent->volume_max + 0.001f);
+      if (error_volume > 0.0f) { error_volume = max(error_volume - 0.1f, 0.0f) * 1.25f; }
+      else { error_volume = (error_volume - 0.025f) * 0.75f; }
+      asv->asv_dampen = clamp(asv->asv_dampen * 0.9f + error_volume, 0.0f, 1.0f);
+    }
   }
 
+  float asv_mod = 0.0f;
+  if (asv_dampen_max > 0.0f) {
+    asv_mod = (asv->asv_dampen > 0.1f) ? (-1.0f * asv_dampen_max * asv->asv_dampen) : 0.0f;
+  }
+
+
+  // Handle the ASV checkpoints and calculate error signal for the PID 
   // FIXME: The padded step logic needs to calculate with STEP_SKIP better
   int i = current->t / ASV_STEP_LENGTH - ASV_STEP_SKIP + 1;
   if ((current->t%ASV_STEP_LENGTH == 0) && (i>=0) && (i<ASV_STEP_COUNT+1) && tr->st_inhaling) {
@@ -99,7 +119,7 @@ void update_asv_data(asv_data_t* asv, tracking_t* tr) {
       const float current_flow = asv->targets_current[i] - asv->targets_current[i-1];
       const float error_flow = current_flow / (recent_flow + 0.001f);
 
-      float error = remap01c(error_volume, asv_low, 0.4f) - remap01c(error_volume, asv_high, 1.4f);
+      float error = remap01c(error_volume, asv_low + asv_mod, 0.4f + asv_mod) - remap01c(error_volume, asv_high + asv_mod*0.5f, 1.4f + asv_mod*0.5f);
       // Speed up tiny adjustments slightly.
       if (error > 0.0f) { error = error * 0.975f - 0.025f; }
       if (error < 0.0f) { error = error * 0.95f - 0.05f; }
