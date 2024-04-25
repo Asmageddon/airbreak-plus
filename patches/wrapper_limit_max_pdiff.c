@@ -35,16 +35,46 @@ extern void pressure_limit_max_difference();
 STATIC float reshape_vauto_ps(float ps1, float mult) {
   // ^2 - 1.330, ^6 - 1.707, ^8 - 1.770
   float ps4 = 1.0f - pow(1.0f - ps1, 4);  // ~1.594x the AUC
-  ps4 = ps4 * 0.75f + ps1 * 0.25f; // ~1.4455x the AUC
+  ps4 = ps4 * 0.5f + ps1 * 0.5f; // ~1.297x the AUC
   if (mult <= 1.0) { 
     return ps1; 
   } else if ((mult > 1.0) && (mult <= 2.0)) {
-    return remap(mult, 1.0f, 2.0f, ps1, ps4 * 1.383f);
+    return remap(mult, 1.0f, 2.0f, ps1, ps4 * 1.542f);
   } else {
-    return ps4 * (mult / 1.4455f);
+    return ps4 * (mult / 1.297f);
   }
 
   return ps1;
+}
+
+STATIC void handle_sensitivities(tracking_t *tr, float asv_factor) {
+  // If the value is changed, it means it was changed by the UI code due to user input. Update the reference value
+  if (sens_trigger != tr->settings.last_trigger) {
+    tr->settings.real_trigger = sens_trigger;
+    tr->settings.last_trigger = sens_trigger;
+  }
+  if (sens_cycle != tr->settings.last_cycle) {
+    tr->settings.real_cycle = sens_cycle;
+    tr->settings.last_cycle = sens_cycle;
+  }
+  if (tr->st_inhaling) {
+    const float cti = tr->current.ti;
+    const float s = tr->settings.real_cycle;
+    // There should be no dynamic collapse this early into the breath, if flow drops at all, it was likely an autotriggered breath.
+    if (cti <= 0.4f) { sens_cycle = (s + 0.8f) / 2.0f; }
+    else {
+      // My ASV changes shape of the flow curve, so that it peaks higher, and goes low earlier. This (maybe) accounts for that.
+      sens_cycle = s * remapc(asv_factor, 1.0f, 2.0f, 1.0f, 0.5f);
+    }
+    tr->settings.last_cycle = sens_cycle;
+  } else {
+    // Increase trigger threshold early into the exhale period to make autotriggering less likely.
+    const float cte = tr->current.te;
+    const float rte = tr->recent.te;
+    const float sens = tr->settings.real_trigger;
+    sens_trigger = remapc(cte, rte - 0.4f, rte - 0.15f, sens * 1.2f + 2.0f, sens * 1.0f);
+    tr->settings.last_trigger = sens_trigger;
+  }
 }
 
 void MAIN start() {
@@ -63,11 +93,15 @@ void MAIN start() {
 
   apply_jitter(true);
 
-  float current_eps = clamp((*cmd_epap-4.0f) * 0.3f - vauto_ps * 0.25f, 0.4f, 1.6f);
 
   float dps = 0.0f;
   bool toggle = (ti_min <= 150);
+  handle_sensitivities(tr, toggle ? asv->asv_factor : 1.0f);
+
   if (*therapy_mode == 3) {
+
+    float current_eps = clamp((*cmd_epap - vauto_ps) * 0.2f, 0.4f, 1.6f);
+
     int t = hist->tick;
     const float ps = *cmd_ps + vauto_ps/2.0f;
     const float ps1 = (ps/vauto_ps); // 0.0 to 1.0

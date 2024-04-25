@@ -193,6 +193,16 @@ typedef struct {
 
 void init_breath(breath_t *breath);
 
+// Necessary to monitor actual setting changes despite the memory address being overwritten
+typedef struct {
+  float last_trigger;
+  float real_trigger;
+  float last_cycle;
+  float real_cycle;
+} settings_proxy_t;
+
+void init_settings(settings_proxy_t *sett);
+
 const float tr_coeff = 0.025f;
 
 typedef struct {
@@ -204,6 +214,8 @@ typedef struct {
   bool st_inhaling : 1;
   bool st_just_started : 1;
   bool st_valid_breath : 1; // Was the last breath valid(e.g. not a super-short pseudo-inhale)?
+
+  settings_proxy_t settings;
 
   breath_t recent; // Tracks recent breath parameters to compare against.
   breath_t last;

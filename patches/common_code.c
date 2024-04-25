@@ -6,7 +6,7 @@ float remap(float s, float start, float end, float new_start, float new_end) {
 }
 
 float remapc(float s, float start, float end, float new_start, float new_end) {
-  return clamp( remap(s, start, end, new_start, new_end), new_start, new_end);
+  return new_start + remap01c(s, start, end) * (new_end - new_start);
 }
 
 float remap01(float s, float start, float end) {
@@ -105,6 +105,12 @@ void init_breath(breath_t *breath) {
   breath->ti = 0.0f;
   breath->te = 0.0f;
 }
+void init_settings(settings_proxy_t *sett) {
+  sett->last_trigger = 0.0f;
+  sett->real_trigger = sens_trigger;
+  sett->last_cycle = 0.0f;
+  sett->real_cycle = sens_cycle;
+}
 void init_tracking(tracking_t *tr) {
   tr->last_progress = breath_progress;
   tr->last_time = tim_read_tim5();
@@ -112,6 +118,8 @@ void init_tracking(tracking_t *tr) {
   tr->tick = 0;
   tr->st_inhaling = false;
   tr->st_just_started = false;
+
+  init_settings(&tr->settings);
 
   init_breath(&tr->recent);
   init_breath(&tr->last);
