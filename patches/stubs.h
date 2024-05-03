@@ -31,4 +31,7 @@ extern int pressure_target_normal_operation(float param_1, int * param_2);
 
 extern char pressure_timed_ramp(float param_1,float param_2,int *param_3);
 
+// Couldn't figure out how to enable casting between doubles and floats. Commented out the entry in stubs.S too
+// extern double sqrt(double param_1);
+
 #endif

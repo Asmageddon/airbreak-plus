@@ -3,6 +3,7 @@
 
 #include "my_asv.h" // Include the asv_data_t definition
 
+
 const float INSTANT_PS = 0.45f;
 const float EPS = 1.2f;
 
@@ -124,8 +125,9 @@ void MAIN start() {
         current_eps = max(0.0f, current_eps - (asv->final_ips - vauto_ps) * 0.25f);
         if (tr->st_just_started) { feat->eps = -current_eps; }
         else {
-          float eps1 = remap01c(tr->current.volume / tr->current.volume_max, 0.05f, 0.6f);
-          eps1 = min(eps1, remap01c(tr->current.te, 1.2f, 0.4f));
+          float eps1 = remap01c(tr->current.volume / tr->current.volume_max, 0.10f, 0.7f);
+          eps1 = sqrtf(eps1);
+          eps1 = min(eps1, remap01c(tr->current.te, max(1.2f, tr->recent.te * 0.8f), max(0.4f, tr->recent.te * 0.4f)));
           feat->eps = max(feat->eps, -current_eps * eps1);
         }
       }
@@ -133,8 +135,8 @@ void MAIN start() {
       float new_ps = remap(new_ps1, 0.0f, 1.0f, feat->eps, asv->final_ips);
       dps = (new_ps - ps);
 
-      feat->ips_fa = remapc(flow2, 1.0f, 8.0f, 0.0f, 0.4f);
-      if (flow <= -2.0f) { feat->ips_fa = 0.0f; }
+      feat->ips_fa = remapc(flow2, sens_trigger, sens_trigger + 4.8f, 0.0f, 0.4f);
+      if (flow <= 0.0f) { feat->ips_fa = 0.0f; }
       dps += feat->ips_fa;
     }
   }

@@ -30,6 +30,14 @@ float pow(float base, int exp){
   }
 }
 
+// Based on this SO answer: https://stackoverflow.com/a/49991852
+float sqrtf(float n) {
+  float guess = 1.0f;
+  for(int i=0; i <= 10; i++) {
+    guess -= (guess*guess - n) / (2*guess);
+  }
+  return guess;
+}
 
 typedef struct {
   unsigned magic;
@@ -88,7 +96,8 @@ void apply_jitter(bool undo) {
   } else { // Get new jitter value
     hist->last_jitter = 1 - (ivars[0]/4) % 2 * 2;
   }
-  const float amtf = 0.005f * hist->last_jitter;
+  // FIXME: This needs to be relative to either EPAP or IPAP, the "is the PS sufficiently different to trigger a redraw?" routine is relative to pressure.
+  const float amtf = 0.01f * hist->last_jitter;
   *cmd_ps += amtf; *cmd_epap_ramp -= amtf;
 }
 

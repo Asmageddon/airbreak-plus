@@ -139,6 +139,7 @@ float remap01(float s, float start, float end);
 float remap01c(float s, float start, float end); // Version that clamps to 0-1
 float lerp(float from, float to, float coeff);
 float pow(float base, int exp);
+float sqrtf(float n);
 
 typedef enum {
   PTR_HISTORY,
