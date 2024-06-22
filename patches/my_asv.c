@@ -49,11 +49,12 @@ void init_asv_data(asv_data_t *data) {
 
   data->ticks = -1; // Uninitialized
 
-  pid_init(&data->pid, 0.6f, 0.075f, 0.2f, -0.05f, asv_pid_max);
+  pid_init(&data->pid, asv_pid_p, asv_pid_i, asv_pid_d, asv_pid_min, asv_pid_max);
   data->asv_factor = 1.0f;
   data->final_ips = 0.0f;
 
   data->asv_dampen = 0.0f;
+  data->asv_skip = -ASV_BREATH_SKIP;
 
   data->target_vol = 0.0f;
   data->target_vol2 = 0.0f;
@@ -92,9 +93,18 @@ void update_asv_data(asv_data_t* asv, tracking_t* tr) {
     asv->final_ips = 0.0f;
     asv->breath_count += 1;
 
-    // Handle ASV target dampening after hyperpneas.
+    // Skip first N breaths needing ASV, to ensure it doesn't fire on autotriggered breaths or other noise.
+    if (pid_get_signal(&asv->pid) <= 0.1f) {
+      asv->asv_skip = max(asv->asv_skip - 1, -ASV_BREATH_SKIP);
+    } else if (asv->asv_skip < 0) {
+      asv->asv_skip += 1;
+      inplace(min, &asv->pid.cumulative_error, ASV_BREATH_SKIP_MAX_FACTOR);
+    } else {
+      asv->asv_skip = ASV_BREATH_SKIP_OFF; // This many breaths not needing ASV to turn it back off
+    }
 
-   if (asv_dampen_max > 0.0f) {
+    // Handle ASV target dampening after hyperpneas.
+    if (asv_dampen_max > 0.0f) {
       float error_volume = (last->volume_max - recent->volume_max) / (recent->volume_max + 0.001f);
       if (error_volume > 0.0f) { error_volume = max(error_volume - 0.1f, 0.0f) * 1.25f; }
       else { error_volume = (error_volume - 0.025f) * 0.75f; }
@@ -123,15 +133,18 @@ void update_asv_data(asv_data_t* asv, tracking_t* tr) {
       // Speed up tiny adjustments slightly.
       if (error > 0.0f) { error = error * 0.975f - 0.025f; }
       if (error < 0.0f) { error = error * 0.95f - 0.05f; }
-      if (error >= 0.99f) { error = 0.0f; } // If the error maxes out, it's probably not a real inhale
 
       pid_update(&asv->pid, error);
     }
   }
 
-  // Diminish the asv factor during the first N*50ms, to avoid huge sudden PS in case of false breaths
-  const float mult = remap01c(1.0f * current->t, 0.0f, 1.0f * ASV_STEP_LENGTH * ASV_STEP_SKIP);
+  // Diminish the asv factor during the first `(N+1)*50ms`, to avoid huge sudden PS in case of false breaths
+  const float mult = remap01c(1.0f * current->t, 0.0f, 1.0f * ASV_STEP_LENGTH * (ASV_STEP_SKIP+1));
   asv->asv_factor = clamp(1.0f + pid_get_signal(&asv->pid) * mult, 1.0f, 1.0f + asv_pid_max);
+ 
+  if (asv->asv_skip < 0) {
+    inplace(min, &asv->asv_factor, 1.0f + ASV_BREATH_SKIP_MAX_FACTOR);
+  }
 }
 
 #endif
