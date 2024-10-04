@@ -95,7 +95,7 @@ int MAIN start(void) {
 		// Draw the leak-compensated flow variable as solid bars
 		GUI_SetColor(0xFF8800);
 		const int g_center = g_top + HEIGHT_FLOW/2;
-		LCD_FillRect2(pos_x, g_center, pos_x+1, g_center - clamp(f_compensated / 2, -HEIGHT_FLOW/2, HEIGHT_FLOW/2));
+		LCD_FillRect2(pos_x, g_center, pos_x+1, g_center - clamp(*flow_compensated / 2, -HEIGHT_FLOW/2, HEIGHT_FLOW/2));
 		GUI_SetColor(0x000000);
 		LCD_FillRect_Alt(pos_x, g_top + HEIGHT_FLOW/2, 2, 1);
 	#endif

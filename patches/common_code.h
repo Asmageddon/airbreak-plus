@@ -11,6 +11,7 @@
 typedef unsigned int uint32;
 typedef signed short int16;
 typedef signed char int8;
+typedef unsigned char uint8;
 typedef __fp16 float16;
 typedef enum { false, true } bool;
 
@@ -32,6 +33,7 @@ static const float *leak = &fvars[0x24]; // Unintentional leak (L/min) - this is
 static const float *flow_raw = &fvars[0x3]; // (L/min)
 static const float *flow_patient = &fvars[0x0]; // (L/min)
 static const float *flow_compensated = &fvars[0x25]; // (L/min)
+#define flow_unfucked (*flow_patient - *leak_basal) // Doesn't include the waveform-shape-distorting within-breath leak detection
 // const float *flow_delayed = &fvars[0x26]; // Slightly delayed 0x25 ?
 
 static const float *actual_pressure = &fvars[1]; // (cmH2O) Actual current pressure in the circuit
@@ -48,10 +50,6 @@ static const   int *therapy_mode = &ivars[0x6f]; // It's 0 when device is inacti
 static const   int *pap_timer = &ivars[0];
 
 #define breath_progress (fvars[0x20]) // Inhale(0.0 to 0.5), Exhale(0.5 to 1.0). Breath duration-dependent. Works in S, VAuto modes, but not ASV
-
-#define f_patient (fvars[0x0])
-#define f_compensated (fvars[0x25])
-#define f_unfucked (*flow_patient - *leak_basal)
 
 #define p_actual  (fvars[1])
 #define p_command (fvars[0x2a])
@@ -141,6 +139,7 @@ float lerp(float from, float to, float coeff);
 float pow(float base, int exp);
 float sqrtf(float n);
 
+
 typedef enum {
   PTR_HISTORY,
   PTR_SQUAREWAVE_DATA,
@@ -172,6 +171,8 @@ typedef struct {
 void init_history(history_t *hist);
 void update_history(history_t *hist);
 history_t *get_history();
+
+float get_delta_flow(history_t *hist, int bin_size);
 
 void apply_jitter(bool undo);
 
@@ -213,8 +214,10 @@ typedef struct {
   uint32 tick;
 
   bool st_inhaling : 1;
-  bool st_just_started : 1;
+  bool st_just_started : 1; // Whether the inhale/exhale portion started this tick
   bool st_valid_breath : 1; // Was the last breath valid(e.g. not a super-short pseudo-inhale)?
+  uint8 st_pre_trigger ;  // "early trigger", e.g. flow will cross trigger threshold in amount of time similar to blower response, eliminating delay
+  uint8 st_pre_cycle ;    // "early cycle", currently unused. Will use to separate "flow is very low", from "the actual exhale is starting" in squarewave
 
   settings_proxy_t settings;
 

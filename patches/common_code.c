@@ -39,6 +39,8 @@ float sqrtf(float n) {
   return guess;
 }
 
+
+
 typedef struct {
   unsigned magic;
   void** pointers;
@@ -88,6 +90,17 @@ history_t *get_history() {
   return GET_PTR(PTR_HISTORY, history_t, init_history);
 }
 
+float get_delta_flow(history_t *hist, int bin_size) {
+  const int t = hist->tick;
+  if (t < 2*bin_size) { return 0.0f; }
+  float avgf[3] = {0.0f, 0.0f, 0.0f}; // I don't think it overflows, but just in case it does, let's have padding.
+  for (int i=0; i<2*bin_size; i++) {
+    avgf[i/bin_size] += hist->flow[(t-i) % HISTORY_LENGTH];
+  }
+  return (avgf[0] - avgf[1]) / (float)(bin_size*bin_size);
+}
+
+
 
 void apply_jitter(bool undo) {
   history_t *hist = get_history();
@@ -127,6 +140,8 @@ void init_tracking(tracking_t *tr) {
   tr->tick = 0;
   tr->st_inhaling = false;
   tr->st_just_started = false;
+  tr->st_pre_trigger = 0;
+  tr->st_pre_cycle = 0;
 
   init_settings(&tr->settings);
 
@@ -147,7 +162,7 @@ void update_tracking(tracking_t *tr) {
   // Handle breaths and their stage
   tr->st_just_started = false;
   if ((tr->last_progress > 0.5f) && (breath_progress < 0.5f)) {
-    tr->st_inhaling = true; tr->st_just_started = true;
+    tr->st_inhaling = true; tr->st_just_started = true; tr->st_pre_trigger = 0; tr->st_pre_cycle = 0;
 
     tr->last = tr->current;
     tr->breath_count += 1;
@@ -165,7 +180,7 @@ void update_tracking(tracking_t *tr) {
       inplace(lerp, &tr->recent.te, tr->last.te, tr_coeff);
     }
   } else if ((tr->last_progress <= 0.5f) && (breath_progress > 0.5f)) {
-    tr->st_inhaling = false; tr->st_just_started = true;
+    tr->st_inhaling = false; tr->st_just_started = true; tr->st_pre_trigger = 0; tr->st_pre_cycle = 0;
   }
 
   tr->tick += 1; tr->current.t += 1;
@@ -175,6 +190,11 @@ void update_tracking(tracking_t *tr) {
   } else { 
     tr->current.te += 0.01f;
     inplace(min, &tr->current.exh_maxflow, *flow_compensated);
+
+    history_t *hist = get_history();
+    const float flow2 = max(*flow_compensated, *flow_compensated + get_delta_flow(hist, 4)*8.0f); // Flow extrapolated 80ms into the future
+    if (flow2 > sens_trigger) { tr->st_pre_trigger += 1; } // Slightly higher than baseline trigger sens
+    else { tr->st_pre_trigger = 0; }
   }
 
   tr->current.volume += (*flow_compensated / 60.0f) * 0.01f;

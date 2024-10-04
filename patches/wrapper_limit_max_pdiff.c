@@ -17,16 +17,6 @@ STATIC void init_features(features_t *feat) {
   feat->ips_fa = 0.0f;
 }
 
-STATIC float get_delta_flow(history_t *hist, int bin_size) {
-  const int t = hist->tick;
-  if (t < 2*bin_size) { return 0.0f; }
-  float avgf[3] = {0.0f, 0.0f, 0.0f}; // I don't think it overflows, but just in case it does, let's have padding.
-  for (int i=0; i<2*bin_size; i++) {
-    avgf[i/bin_size] += hist->flow[(t-i) % HISTORY_LENGTH];
-  }
-  return (avgf[0] - avgf[1]) / (float)(bin_size*bin_size);
-}
-
 
 // +1 pointer address: 0x000f93d0. Original function address: 0x080bc992
 extern void pressure_limit_max_difference();
@@ -36,13 +26,14 @@ extern void pressure_limit_max_difference();
 STATIC float reshape_vauto_ps(float ps1, float mult) {
   // ^2 - 1.330, ^6 - 1.707, ^8 - 1.770
   float ps4 = 1.0f - pow(1.0f - ps1, 4);  // ~1.594x the AUC
-  ps4 = ps4 * 0.5f + ps1 * 0.5f; // ~1.297x the AUC
+  ps4 = ps4 * 0.25f + ps1 * 0.75f; // 25%=1.1485x, 50%=~1.297x the AUC
+  const float auc = 1.1485;
   if (mult <= 1.0) { 
     return ps1; 
   } else if ((mult > 1.0) && (mult <= 2.0)) {
-    return remap(mult, 1.0f, 2.0f, ps1, ps4 * 1.542f);
+    return remap(mult, 1.0f, 2.0f, ps1, ps4 * (2.0f / auc));
   } else {
-    return ps4 * (mult / 1.297f);
+    return ps4 * (mult / auc);
   }
 
   return ps1;
@@ -85,10 +76,6 @@ void MAIN start() {
   update_tracking(tr);
   asv_data_t *asv = get_asv_data();
   update_asv_data(asv, tr);
-
-  const float flow = *flow_compensated; // (L/min)
-  const float dflow = get_delta_flow(hist, 4);
-  const float flow2 = max(flow, flow + dflow*8.0f); // Flow extrapolated 80ms into the future
 
   features_t *feat = GET_PTR(PTR_FEATURES, features_t, init_features);
 
@@ -135,8 +122,8 @@ void MAIN start() {
       float new_ps = remap(new_ps1, 0.0f, 1.0f, feat->eps, asv->final_ips);
       dps = (new_ps - ps);
 
-      feat->ips_fa = remapc(flow2, sens_trigger, sens_trigger + 4.8f, 0.0f, 0.4f);
-      if (flow <= 0.0f) { feat->ips_fa = 0.0f; }
+      if (tr->st_pre_trigger > 0) { feat->ips_fa = min(tr->st_pre_trigger, 2) * 0.2f; };
+      if (*flow_compensated <= 0.0f) { feat->ips_fa = 0.0f; }
       dps += feat->ips_fa;
     }
   }
