@@ -148,6 +148,8 @@ void init_tracking(tracking_t *tr) {
   init_breath(&tr->recent);
   init_breath(&tr->last);
   init_breath(&tr->current);
+
+  tr->final_ps = 0.0f;
 }
 
 tracking_t* get_tracking() {
@@ -167,6 +169,7 @@ void update_tracking(tracking_t *tr) {
     tr->last = tr->current;
     tr->breath_count += 1;
     init_breath(&tr->current);
+    tr->final_ps = *cmd_ps;
 
     // Update recent breath representing the recent "weighted averages"
     // TODO: Expand checks for whether a breath was valid
@@ -181,20 +184,27 @@ void update_tracking(tracking_t *tr) {
     }
   } else if ((tr->last_progress <= 0.5f) && (breath_progress > 0.5f)) {
     tr->st_inhaling = false; tr->st_just_started = true; tr->st_pre_trigger = 0; tr->st_pre_cycle = 0;
+    tr->final_ps = *cmd_ps;
   }
 
   tr->tick += 1; tr->current.t += 1;
   if (tr->st_inhaling) { 
     tr->current.ti += 0.01f;
     inplace(max, &tr->current.inh_maxflow, *flow_compensated);
+
+    // If cycle would normally happen, start pre_cycle, for use when custom cycle is used
+    if (*flow_compensated < tr->current.inh_maxflow * sens_cycle) { tr->st_pre_cycle += 1; } // + (*flow_compensated<0.0f)
+    else { tr->st_pre_cycle = max(tr->st_pre_cycle - 1, 0); } // Don't just reset it
+
   } else { 
     tr->current.te += 0.01f;
     inplace(min, &tr->current.exh_maxflow, *flow_compensated);
 
+    // If flow extrapolated 80ms(~blower delay) into the future crosses threshold, increment pretrigger
     history_t *hist = get_history();
     const float flow2 = max(*flow_compensated, *flow_compensated + get_delta_flow(hist, 4)*8.0f); // Flow extrapolated 80ms into the future
     if (flow2 > sens_trigger) { tr->st_pre_trigger += 1; } // Slightly higher than baseline trigger sens
-    else { tr->st_pre_trigger = 0; }
+    else { tr->st_pre_trigger = 0; } // This has to reset, flow doesn't slow down during the start of a breath
   }
 
   tr->current.volume += (*flow_compensated / 60.0f) * 0.01f;
@@ -206,3 +216,4 @@ void update_tracking(tracking_t *tr) {
 }
 
 #include "my_asv.c"
+#include "feat_triggercycle.c"

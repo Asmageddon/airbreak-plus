@@ -93,12 +93,7 @@ patch_code_graph() {
 # Replaces not_called_during_loop
 patch_code_squarewave() {
 	echo "Patching Squarewave"
-	patch_pointer build/squarewave.bin 0xfd000 0xf9778 '\x01\xd0\x0f\x08'
-}
-
-patch_code_squarewave_asv() {
-	echo "Patching Squarewave ASV"
-	patch_pointer build/squarewave_asv.bin 0xfd000 0xf9778 '\x01\xd0\x0f\x08'
+	patch_pointer build/squarewave.bin 0xfd200 0xf9778 '\x01\xd2\x0f\x08'
 }
 
 # patch_code_squarewave_pav() {
@@ -112,7 +107,7 @@ patch_code_asv_task_wraper() {
 
 patch_wrapper_limit_max_pdiff() {
 	echo "Patching wrapper for pressure_limit_max_diff"
-	patch_pointer build/wrapper_limit_max_pdiff.bin 0xfee00 0xf93d0 '\x01\xee\x0f\x08'
+	patch_pointer build/wrapper_limit_max_pdiff.bin 0xff000 0xf93d0 '\x01\xf0\x0f\x08'
 }
 
 patch_code() {
@@ -121,12 +116,9 @@ patch_code() {
 		echo "Patching code"
 		patch_code_common
 		patch_code_graph
-		if [[ $PATCH_S_ASV == 1 ]] ; then
-			patch_code_squarewave_asv
-		elif [[ $PATCH_S == 1 ]] ; then
+		if [[ $PATCH_S == 1 ]] ; then
 			patch_code_squarewave
 		fi
-
 		if [[ $PATCH_ASV_TASK_WRAPPER == 1 ]] ; then
 			patch_code_asv_task_wraper
 		fi

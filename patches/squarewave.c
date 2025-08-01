@@ -1,48 +1,52 @@
 #include "stubs.h"
+#include "common_code.h"
 
-const float RISE_TIME=0.2f;  // 1.6 * 0.4 = ~0.65s ramp
-const float PS_lerp=0.07f; // 0.1f is ~0.25s and sharp but comfy, 0.05f feels a bit slow
+const float EPS_FIXED_TIME = 1.2f;
 
-void start(int param_1) {
-  float * const fvars = (void*) 0x2000e948;
-  int * const ivars = (void*) 0x2000e750;
+// This is where the real magic starts
+// The entry point. All other functions **must** be marked INLINE or STATIC
+void MAIN start(int param_1) {
+  // It's updated in `wrapper_limit_max_pdiff` which always runs
+  tracking_t *tr = get_tracking();
 
-  const float progress = fvars[0x20]; // 1.6s to 0.5, 4.5s to 1.0 
-  const float s_ipap = fvars[0xe];
-  const float s_epap = fvars[0xf];
+  const float s_eps = 0.8f;                // (s)
+  const float s_rise_time = s_rise_time_f; // (s)
+  const float s_fall_time = 0.8f;          // (s)
 
-  const float flow = fvars[0x25]; // Leak-compensated patient flow
+  // Binary toggle if IPAP ends in 0.2 or 0.8
+  const float a = (s_ipap - (int)s_ipap);
+  const int8 toggle = (((a >= 0.1f) && (a <= 0.3f)) || ((a >= 0.7f) && (a <= 0.9f)));
 
-  const float epap = s_epap;
-  const float ips = s_ipap - s_epap;
-  const float eps = 1.0f;
+  const float delta = 0.010f; // It's 10+-0.01ms, basically constant
+  const float flow = *flow_compensated / 60.0f; // (L/s)
 
-  float *cmd_ps = &fvars[0x29];
-  float *cmd_epap = &fvars[0x28];
-  float *cmd_ipap = &fvars[0x2d]; // This is probably set to epap+ps elsewhere, and likely does nothing here
 
-  if (progress <= 0.5f) { // Inhale
-    *cmd_epap = epap;
-    if (progress <= RISE_TIME) {
-      *cmd_ps = progress * (ips / RISE_TIME);
-    } else {
-      *cmd_ps = ips;
-    }
+  // Set the commanded PS and EPAP values based on our target
+  *cmd_epap = s_epap;
+  if (tr->st_inhaling) {
+    const float t = tr->current.ti;
+    const float smooth_time = 0.075f; // (s) Smooth the last N ms of the ramp into 2N of half-speed ramp
+    const float t2 = min(t, s_rise_time - smooth_time) + clamp((t-(s_rise_time-smooth_time))*0.5f, 0.0f, smooth_time);
+
+    float perc = 0.1f + 0.7f * remap01c(t2, 0.0f, s_rise_time) + (0.4f * breath_progress); // breath_progress during inhale is 0-0.5
+
+    perc = max(0.0f, perc - (tr->st_pre_cycle * 0.01f) / 1.5f ); // 1.5s to go from 100->0% of PS
+
+    *cmd_ps = s_ips * perc;
   } else { // Exhale
-    *cmd_ps = *cmd_ps * (1.0f-PS_lerp);
-    *cmd_epap = epap;
-    if (progress <= 0.600f) {
-      *cmd_epap -= (progress - 0.5f) * 10.0f * eps;
-    } else if (progress <= 0.700f) {
-      *cmd_epap -= (0.70f - progress) * 10.0f * eps;
-    }
-  }
+    const float t = tr->current.te;
+    float eps_mult = remap01c(tr->current.volume / tr->current.volume_max, 0.1f, 0.7f);
+    eps_mult = min(eps_mult, remap01c(t, EPS_FIXED_TIME, 0.4f));
 
-  // Could probably get away with much less of this(ps-=0.2 isn't enough tho), but...
-  const float jitter = 0.02f - 0.04f * (tim_read_tim5() & 1);
-  *cmd_ps += jitter; *cmd_epap += jitter * 2; *cmd_ipap += jitter*2;
+    float ips_mult = remap01c(t, s_fall_time, 0.0f); ips_mult = ips_mult * ips_mult * 0.95f;
+    
+    *cmd_ps = ips_mult * tr->final_ps - (1.0f - ips_mult) * eps_mult * s_eps;
+  }
   
-  if (*cmd_epap < 0.0f) { *cmd_epap = 0.0f; }
+  // Safeguards against going cray cray
+  *cmd_ps = clamp(*cmd_ps, -s_eps, s_ips);
+  *cmd_epap = clamp(*cmd_epap, s_epap, s_epap);
+  *cmd_ipap = *cmd_epap + *cmd_ps;
 
   return;
 }

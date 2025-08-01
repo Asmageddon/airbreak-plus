@@ -6,18 +6,22 @@ BUILD=build
 
 all: $(BUILD)/stm32-patched.bin $(BUILD)/stm32-asv.bin
 
-$(BUILD)/stm32-patched.bin: patch-airsense $(BUILD)/common_code.bin $(BUILD)/graph.bin $(BUILD)/squarewave.bin
-	export PATCH_CODE=1 && export PATCH_S=1 && ./patch-airsense stm32.bin $@
+$(BUILD)/stm32-patched.bin: patch-airsense $(BUILD)/common_code.bin $(BUILD)/graph.bin
+	export PATCH_CODE=1 && ./patch-airsense stm32.bin $@
 
-$(BUILD)/stm32-asv.bin: patch-airsense $(BUILD)/common_code.bin $(BUILD)/graph.bin $(BUILD)/squarewave_asv.bin $(BUILD)/asv_task_wrapper.bin $(BUILD)/wrapper_limit_max_pdiff.bin
-	export PATCH_CODE=1 && export PATCH_S_ASV=1 && export PATCH_ASV_TASK_WRAPPER=1 && export PATCH_VAUTO_WRAPPER=1 && ./patch-airsense stm32.bin $@
+$(BUILD)/stm32-asv.bin: patch-airsense $(BUILD)/common_code.bin $(BUILD)/graph.bin $(BUILD)/squarewave.bin $(BUILD)/asv_task_wrapper.bin $(BUILD)/wrapper_limit_max_pdiff.bin
+	export PATCH_CODE=1 && export PATCH_S=1 && export PATCH_ASV_TASK_WRAPPER=1 && export PATCH_VAUTO_WRAPPER=1 && ./patch-airsense stm32.bin $@
 
-binaries: $(BUILD)/common_code.bin $(BUILD)/graph.bin $(BUILD)/squarewave.bin $(BUILD)/squarewave_asv.bin $(BUILD)/asv_task_wrapper.bin $(BUILD)/wrapper_limit_max_pdiff.bin
+binaries: $(BUILD)/common_code.bin $(BUILD)/graph.bin $(BUILD)/squarewave.bin $(BUILD)/asv_task_wrapper.bin $(BUILD)/wrapper_limit_max_pdiff.bin
 
 serve:
 	mkdocs serve
 deploy:
 	mkdocs gh-deploy
+
+# There are decent distances between the different patches, 
+# but if you substantially increase the amount of code, beware collisions.
+# I've already had several happen in the past, whoops :F
 
 $(BUILD)/common_code.elf: $(BUILD)/common_code.o $(BUILD)/stubs.o
 common_code-offset := 0x80fe000
@@ -29,19 +33,15 @@ graph-offset := 0x80fcd40
 graph-extra := --just-symbols=$(BUILD)/common_code.elf
 
 $(BUILD)/squarewave.elf: $(BUILD)/squarewave.o $(BUILD)/stubs.o
-squarewave-offset := 0x80fd000
+squarewave-offset := 0x80fd200
 squarewave-extra := --just-symbols=$(BUILD)/common_code.elf
-
-$(BUILD)/squarewave_asv.elf: $(BUILD)/squarewave_asv.o $(BUILD)/stubs.o
-squarewave_asv-offset := 0x80fd000
-squarewave_asv-extra := --just-symbols=$(BUILD)/common_code.elf
 
 $(BUILD)/asv_task_wrapper.elf: $(BUILD)/asv_task_wrapper.o $(BUILD)/stubs.o
 asv_task_wrapper-offset := 0x80fdf00
 asv_task_wrapper-extra := --just-symbols=$(BUILD)/common_code.elf
 
 $(BUILD)/wrapper_limit_max_pdiff.elf: $(BUILD)/wrapper_limit_max_pdiff.o $(BUILD)/stubs.o
-wrapper_limit_max_pdiff-offset := 0x80fee00
+wrapper_limit_max_pdiff-offset := 0x80ff000
 wrapper_limit_max_pdiff-extra := --just-symbols=$(BUILD)/common_code.elf
 
 # If there is a new version of the ghidra XML, the stubs.S

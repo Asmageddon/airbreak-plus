@@ -3,6 +3,7 @@
 
 #include "my_asv.h" // Include the asv_data_t definition
 
+#define TRC_TEST 1
 
 const float INSTANT_PS = 0.45f;
 const float EPS = 1.2f;
@@ -81,12 +82,21 @@ void MAIN start() {
 
   apply_jitter(true);
 
-
   float dps = 0.0f;
   bool toggle = (ti_min <= 150);
-  handle_sensitivities(tr, toggle ? asv->asv_factor : 1.0f);
 
-  if (*therapy_mode == 3) {
+  #if TRC_TEST == 1
+    triggercycle_t *trc = get_triggercycle();
+    if (*therapy_mode == MODE_S) { trc->custom_cycle = true; }
+    else { trc->custom_cycle = false; }
+    update_triggercycle(trc, tr);
+  #else
+    handle_sensitivities(tr, toggle ? asv->asv_factor : 1.0f);
+  #endif
+
+  float new_ps = *cmd_ps;
+
+  if (*therapy_mode == MODE_VAUTO) {
 
     float current_eps = clamp((*cmd_epap - vauto_ps) * 0.2f, 0.4f, 1.6f);
 
@@ -95,18 +105,16 @@ void MAIN start() {
     const float ps1 = (ps/vauto_ps); // 0.0 to 1.0
 
     if (tr->st_inhaling) {
-      float new_ps = ps;
       new_ps = remap(ps1, 0.0f, 1.0f, feat->eps, vauto_ps-INSTANT_PS) + INSTANT_PS;
       if (toggle) { // Disable if Ti min is set to above 0.1s
         float new_ps1 = reshape_vauto_ps(ps1, asv->asv_factor);
         new_ps = remap(new_ps1, 0.0f, 1.0f, feat->eps, vauto_ps - INSTANT_PS) + INSTANT_PS*asv->asv_factor;
       }
-      dps = (new_ps - ps);
 
       feat->ips_fa = 0.0f;
       feat->eps = min(feat->eps + 0.01f * current_eps, 0.0f);
 
-      asv->final_ips = max(asv->final_ips, ps + dps);
+      asv->final_ips = max(asv->final_ips, new_ps);
     } else { // Exhaling
       if (tr->current.ti >= 0.7f) {
         current_eps = max(0.0f, current_eps - (asv->final_ips - vauto_ps) * 0.25f);
@@ -119,17 +127,18 @@ void MAIN start() {
         }
       }
       float new_ps1 = ps1*ps1 * 0.75f + 0.25f * ps1;
-      float new_ps = remap(new_ps1, 0.0f, 1.0f, feat->eps, asv->final_ips);
-      dps = (new_ps - ps);
+      new_ps = remap(new_ps1, 0.0f, 1.0f, feat->eps, asv->final_ips);
 
       if (tr->st_pre_trigger > 0) { feat->ips_fa = min(tr->st_pre_trigger, 2) * 0.2f; };
       if (*flow_compensated <= 0.0f) { feat->ips_fa = 0.0f; }
-      dps += feat->ips_fa;
+      new_ps += feat->ips_fa;
     }
+
+    new_ps = *cmd_ps + (new_ps - ps); // Correction for the bizarre way VAuto handles the *cmd_ps fvar
   }
 
   const float orig_ps = *cmd_ps;
-  *cmd_ps += dps;
+  *cmd_ps = new_ps;
   pressure_limit_max_difference(); // Execute the original function
   *cmd_ps = orig_ps;
 

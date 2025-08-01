@@ -37,16 +37,18 @@ static const float *flow_compensated = &fvars[0x25]; // (L/min)
 // const float *flow_delayed = &fvars[0x26]; // Slightly delayed 0x25 ?
 
 static const float *actual_pressure = &fvars[1]; // (cmH2O) Actual current pressure in the circuit
+
 static const   int *therapy_mode = &ivars[0x6f]; // It's 0 when device is inactive
 // Values of therapy_mode:
-// 0 - Inactive
-// 1 - CPAP
-// 2 - APAP / AutoSet / AutoSet For Her
-// 3 - VAuto
-// 4 - S (EasyBreathe=Off) / ST / PAC
-// 6 - iVAPS
-// 8 - S (EasyBreathe=On)
-// 9 - ASV / ASVAuto
+const int MODE_OFF   = 0; // Inactive
+const int MODE_CPAP  = 1; // CPAP
+const int MODE_APAP  = 2; // APAP / AutoSet / AutoSet For Her
+const int MODE_VAUTO = 3; // VAuto
+const int MODE_S     = 4; // S / ST / PAC (with EasyBreathe=Off)
+const int MODE_IVAPS = 6; // iVAPS
+const int MODE_S_EB  = 8; // S / ST / PAC (with EasyBreathe=On)
+const int MODE_ASV   = 9; // ASV / ASVAuto
+
 static const   int *pap_timer = &ivars[0];
 
 #define breath_progress (fvars[0x20]) // Inhale(0.0 to 0.5), Exhale(0.5 to 1.0). Breath duration-dependent. Works in S, VAuto modes, but not ASV
@@ -146,6 +148,7 @@ typedef enum {
   PTR_TRACKING,
   PTR_ASV_DATA,
   PTR_FEATURES,
+  PTR_TRIGGERCYCLE,
 
   __PTR_LAST,
 } ptr_index;
@@ -224,6 +227,8 @@ typedef struct {
   breath_t recent; // Tracks recent breath parameters to compare against.
   breath_t last;
   breath_t current;
+
+  float final_ps; // PS at the end of the last inhale or exhale phase
 } tracking_t;
 
 void init_tracking(tracking_t *tr);
@@ -231,5 +236,6 @@ tracking_t* get_tracking();
 void update_tracking(tracking_t *tr); 
 
 #include "my_asv.h"
+#include "feat_triggercycle.h"
 
 #endif
