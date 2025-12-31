@@ -244,7 +244,12 @@ class ASFirmwarePatches(object):
     """This class contains the actual patching scripts for specific items"""
 
     known_units = [
-        ASUnits("AirSense 10 Autoset", "37028", "SX567-0401", "533b91127aa22e05b933db203ad56c449dc12a8c3fd62f57bd88c472a8061775"),
+        ASUnits("AirCurve 10 VAuto", "37051", "SX567-0401", "6790b548e0b37c57bc118772d4a04a599c0b74b16cd92e821071b9c7ba5ab711"),
+        ASUnits("AirSense 10 AutoSet", "37028", "SX567-0401", "533b91127aa22e05b933db203ad56c449dc12a8c3fd62f57bd88c472a8061775"),
+        ASUnits("AirSense 10 AutoSet", "37090", "SX567-0401", "aa79d2e4f9114f8f9162b52a321eb4cf4d123db9ad55d4c2e08b5716fcaea25f"),
+        ASUnits("AirSense 10 AutoSet", "37101", "SX567-0401", "9e312f87d1a169195bb5ff6cf026e820837c39e578ca13340e1d29bf7d63dbd0"),
+        ASUnits("AirSense 10 Elite", "37117", "SX567-0401", "7ad0812dbe3a4cc79dc85df9781e64fdb9b2da75be957c1515188abac65d30ad"),
+        ASUnits("AirSense 10 AutoSet For Her", "37105", "SX567-0401", "5bd9b8b44b094c150c7ef996236fa4fe38421a08ce6b09811bb6ecb8955fc85a"),
     ]
         
     def __init__(self, asf):
