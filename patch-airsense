@@ -24,6 +24,22 @@ patch() {
 	dd bs=1 seek=$offset conv=notrunc of="$OUT" status=none
 }
 
+check_patch ()
+{
+    offset=$(printf "%d" "$1");
+    tmp=$(mktemp) || return 2;
+    cat > "$tmp";
+    size=$(stat -c %s "$tmp");
+    if dd if="$OUT" bs=1 skip="$offset" count="$size" status=none | cmp -s - "$tmp"; then
+        rm -f "$tmp";
+        return 0;
+    else
+        rm -f "$tmp";
+        return 1;
+    fi
+}
+
+
 check_hash() {
 	HASH=$(sha256sum $IN | awk '{print $1}')
 	if [[ $HASH == "6790b548e0b37c57bc118772d4a04a599c0b74b16cd92e821071b9c7ba5ab711" ]] ; then
@@ -281,6 +297,19 @@ asv_disable_backup_rate () {
     printf '\x01\xf0\x0f\x08' | patch 0xf44e0
 }
 
+motor_nagscreen () {
+    # TODO we're out of bits in BUILD_FLAGS. maybe extend it to two bytes (and find better flash location)
+
+    local patch_addr=0x0f23e0
+    if ! printf '\x05\xdb' | check_patch $patch_addr ; then
+        echo "${FUNCNAME[0]}: unexpected bytes at patch location!"
+        return 1
+    fi
+
+    echo "Patching \"Motor life exceeded\" nag screen"
+    printf '\x05\xe0' | patch $patch_addr
+}
+
 check_hash
 
 patch_tamper
@@ -298,6 +327,7 @@ extra_modes # 8
 extra_menu # 16
 # all_menu # 32
 gui_config # 64
+motor_nagscreen
 
 asv_unlock_ps_range
 

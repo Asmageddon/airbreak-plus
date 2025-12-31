@@ -416,6 +416,11 @@ class ASFirmwarePatches(object):
             self.asf.patch(fw, 0xBB734, clobber=True)
         else:
             raise IOError("Unknown hash: %s"%self.asf.hash)
+
+    def motor_nagscreen(self):
+        """ Remove "Motor life exceeded" nag screen """
+        asf.patch([0x0e, 0x49, 0x88, 0x42, 0x05, 0xe0, 0x03, 0x21, 0x0f, 0x20], dataseq=[0x0e, 0x49, 0x88, 0x42, 0x05, 0xdb, 0x03, 0x21, 0x0f, 0x20], clobber=True)
+
             
 def str2bool(v):
     if isinstance(v, bool):
@@ -446,6 +451,7 @@ if __name__ == "__main__":
         {'arg':"patch-fw-serialmonitor",'desc':"Add monitor binary running on USART3 accessory port.",  'default':False, 'function':'patch_uart3_monitor','flags':(1<<0)},
         {'arg':"patch-fw-breath",       'desc':"Add breath binary to allow direct pressure control.",   'default':False, 'function':'patch_breath',      'flags':(1<<0)},
         {'arg':"patch-fw-graph",        'desc':"Add graph binary to allow graphing of pressures.",      'default':False, 'function':'patch_graph',       'flags':(1<<0)},
+        {'arg':"patch-motor-nagscreen", 'desc':"Remove \"Motor life exceeded\" nag screen",             'default':False, 'function':'motor_nagscreen',   'flags':(1<<0)},
     ]
     
     for arg in patch_list_yn:
