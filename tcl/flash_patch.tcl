@@ -75,19 +75,6 @@ namespace eval patch {
 
     proc _to_u32 {v} { expr {$v & 0xFFFFFFFF} }
 
-    proc patch::_with_quiet {body} {
-        # Save current log level
-        set old_level [log_level]
-
-        # Silence INFO chatter but keep WARN/ERROR
-        log_level warning
-
-        try {
-            uplevel 1 $body
-        } finally {
-            log_level $old_level
-        }
-    }
 
     # ------------------------------------------------------------
     # STM32F4 sector layout
@@ -185,15 +172,11 @@ namespace eval patch {
     }
 
     proc with_guard {body} {
-        _with_quiet {
-            _guard_enter
-        }
+        _guard_enter
         try {
             uplevel 1 $body
         } finally {
-            _with_quiet {
-                _guard_exit
-            }
+            _guard_exit
         }
     }
 
@@ -303,7 +286,7 @@ namespace eval patch {
     # ------------------------------------------------------------
     # Patch primitives
     # ------------------------------------------------------------
-    proc bytes {off bytes {verify 1}} {
+    proc bytes {off bytes {verify 0}} {
         _guard_enter
         try {
             set addr [_abs_addr $off]
@@ -345,7 +328,7 @@ namespace eval patch {
         }
     }
 
-    proc hexstr {off hex {verify 1}} {
+    proc hexstr {off hex {verify 0}} {
         set parts [regexp -all -inline {[0-9A-Fa-f]{2}} $hex]
 
         if {[llength $parts] == 0} {
@@ -364,7 +347,7 @@ namespace eval patch {
         }
     }
 
-    proc cesc {off cstr {verify 1}} {
+    proc cesc {off cstr {verify 0}} {
         set matches [regexp -all -inline {\\x([0-9A-Fa-f]{2})} $cstr]
 
         if {[llength $matches] == 0} {
@@ -380,7 +363,7 @@ namespace eval patch {
         ::patch::bytes $off $b $verify
     }
 
-    proc write_u32 {off v {verify 1}} {
+    proc write_u32 {off v {verify 0}} {
         set v [_to_u32 $v]
         bytes $off [list \
             [expr {$v & 0xFF}] \
@@ -389,7 +372,7 @@ namespace eval patch {
             [expr {($v >> 24) & 0xFF}]] $verify
     }
 
-    proc write_float {off f {verify 1}} {
+    proc write_float {off f {verify 0}} {
         binary scan [binary format f $f] I u
         write_u32 $off $u $verify
     }
