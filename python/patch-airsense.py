@@ -251,6 +251,7 @@ class ASFirmwarePatches(object):
         ASUnits("AirSense 10 AutoSet", "37090", "SX567-0401", "aa79d2e4f9114f8f9162b52a321eb4cf4d123db9ad55d4c2e08b5716fcaea25f"),
         ASUnits("AirSense 10 AutoSet", "37101", "SX567-0401", "9e312f87d1a169195bb5ff6cf026e820837c39e578ca13340e1d29bf7d63dbd0"),
         ASUnits("AirSense 10 Elite", "37117", "SX567-0401", "7ad0812dbe3a4cc79dc85df9781e64fdb9b2da75be957c1515188abac65d30ad"),
+        ASUnits("AirSense 10 Elite", "37123", "SX567-0401", "860563488a1475b6aa4829ff4a370225bb8c56d89c913a2413d61fecb637ab12"),
         ASUnits("AirSense 10 AutoSet For Her", "37105", "SX567-0401", "5bd9b8b44b094c150c7ef996236fa4fe38421a08ce6b09811bb6ecb8955fc85a"),
     ]
         
