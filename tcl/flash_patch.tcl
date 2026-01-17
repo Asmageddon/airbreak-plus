@@ -441,5 +441,9 @@ namespace eval patch {
     }
 }
 
-patch::help
-
+if {[info level] == 0} {
+    patch::help
+} else {
+    echo "[info script] loaded."
+    echo {    patch::help for instructions}
+}
