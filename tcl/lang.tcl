@@ -216,4 +216,9 @@ namespace eval lang {
 
 }
 
-echo [lang::help]
+if {[info level] == 0} {
+    echo [lang::help]
+} else {
+    echo "[info script] loaded."
+    echo {    lang::help for instructions}
+}
