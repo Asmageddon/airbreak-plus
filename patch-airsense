@@ -364,6 +364,7 @@ extra_menu # 16
 gui_config # 64
 unlock_languages
 motor_nagscreen
+unlock_languages
 
 asv_unlock_ps_range
 
