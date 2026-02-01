@@ -167,7 +167,7 @@ typedef struct {
   int8 last_jitter;
   float last_time;
   float16 flow[HISTORY_LENGTH];
-  // float16 cmd_ipap[HISTORY_LENGTH];
+  float16 cmd_ipap[HISTORY_LENGTH];
   // float16 pressure[HISTORY_LENGTH];
 } history_t;
 
@@ -175,7 +175,8 @@ void init_history(history_t *hist);
 void update_history(history_t *hist);
 history_t *get_history();
 
-float get_delta_flow(history_t *hist, int bin_size);
+float get_delta_flow(history_t *hist, int bin_size); // Get the rate of change of the flow curve
+bool is_cmd_ipap_constant(history_t *hist); // Test if cmd_ipap is currently unchanging
 
 void apply_jitter(bool undo);
 
