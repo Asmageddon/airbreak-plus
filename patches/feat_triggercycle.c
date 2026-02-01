@@ -25,15 +25,18 @@ void update_triggercycle(triggercycle_t *trc, tracking_t *tr) {
   if (sens_cycle != trc->last_cycle) {
     trc->real_cycle = sens_cycle;
   }
+  
+  history_t *hist = get_history();
 
   if (tr->st_inhaling) {
     const float cti = tr->current.ti;
     const float s = trc->real_cycle;
-    // There should be no dynamic collapse this early into the breath, if flow drops at all, it was likely an autotriggered breath.
+
+    // There should be no dynamic collapse this early into the breath, if flow drops heavily(might drop slightly with squarewave), it was likely an autotriggered breath.
     if (cti <= 0.4f) { sens_cycle = (s + 0.8f) / 2.0f; }
 
     if (trc->custom_cycle) {
-      float s2 = -0.225f + 0.5f * s; // Results in thresholds of: 0.025, -0.05, -0.1, -0.15, -0.185
+      float s2 = -0.225f + 0.5f * s; // Results in thresholds of: 0.025, -0.05, -0.1, -0.15, -0.185 (% of peak flow)
       if ( (flow_unfucked < (tr->current.inh_maxflow * s2)) || (tr->st_pre_cycle >= PRE_CYCLE_MAX_TICKS) ) {
         sens_cycle = 0.95; // Guarantee cycling
       } else {
@@ -41,13 +44,35 @@ void update_triggercycle(triggercycle_t *trc, tracking_t *tr) {
       }
     }
   } else {
-    // Increase trigger threshold early into the exhale period to make autotriggering less likely.
     const float cte = tr->current.te;
     const float rte = tr->recent.te;
     const float s = trc->real_trigger;
-    sens_trigger = remapc(cte, rte - 0.4f, rte - 0.15f, s * 1.2f + 2.0f, s * 1.0f);
 
-    // TODO: Custom trigger that combines flow-based, pressure error-based, cumulative volume-based thresholds
+    // Essentially: Increase threshold if we're >0.3s away from expected next inhale, more beyond >0.6s
+    sens_trigger = remapc(cte, rte - 0.6f, rte - 0.3f, s * 1.2f + 2.0f, s * 1.0f);
+
+    if(*flow_compensated < 0.0f) { trc->volbased = 0.0f; } else { trc->volbased += *flow_compensated / 60.0f * 0.01f; }
+
+    // Fuzzy logic custom trigger that considers each of: flow, volume, pressure error(early inhalation reduces mask pressure before blower compensates), time(expected moment of next inhale)
+    //  * Volbased: Most non-inhales only reach 10-15mL, most ineffective efforts reach 25-30mL
+    //  * Pressure Error: usually goes to at least 0.2cmH2O below command just before detected inhales, sometimes up to 0.4-0.5. Random fluctuations usually stay within 0.15
+    //  * Time-based: Slightly lower trigger threshold within +-0.3s of expected next 
+
+    if (trc->custom_trigger && (is_cmd_ipap_constant(hist) || tr->st_pre_trigger > 0)) {
+      float do_trigger = remap01c(*flow_compensated, 0.0f, s);
+
+      if (cte >= 1.2f) {
+        do_trigger += remap01c(trc->volbased, 0.020f, 0.040f) * 0.3f - remap01c(trc->volbased, 0.015f, 0.05f) * 0.2f;
+      }
+      if (is_cmd_ipap_constant(hist)) {
+        do_trigger += (remap01c(p_error, -0.1f, -0.35f) - remap01c(p_error, 0.1f, 0.35f)) * 0.3f; 
+      }
+
+      do_trigger += remap01c(abs(rte-cte), 0.3f, 0.0f) * 0.2f;
+
+      if (do_trigger >= 1.0f) {sens_trigger = -5.0f; } // Guarantee trigger
+      else { sens_trigger = 999.0f; } // Make trigger impossible
+    } else { sens_trigger = trc->real_trigger; }
   }
 
   trc->last_cycle = sens_cycle;
@@ -56,25 +81,3 @@ void update_triggercycle(triggercycle_t *trc, tracking_t *tr) {
 
 
 #endif
-
-    // else {
-    //   // My ASV changes shape of the flow curve, so that it peaks higher, and goes low earlier. This (maybe) accounts for that.
-    //   sens_cycle = s * remapc(asv_factor, 1.0f, 2.0f, 1.0f, 0.5f);
-    // }
-
-// 7. Apply EPS to S mode
-
-// PAP - lower trigger threshold with cumulative volume - most non-inhales only reach 10-15mL, most ineffective efforts reach 25-30mL, and with p_error(only if recent commanded volume was constant)
-// 20-40mL for -0%-25% threshold 5-15 for +0%-25%
-// Previously did 0.05-0.3cmH2O p_error to 3cmH2O, or -62.5% threshold, though baseline was 1.5cmH2O higher, so more like -30% ?
-
-
-
-// Function pointer wizardry - probably/definitely won't use, overkill and bug-prone
-/*
-void *array[9];
-bool (*trigger_fn[9])();
-bool (*cycle_fn[9])();
-trigger_fn[4] = ...;
-bool result = (*trigger_fn[4])();
-*/

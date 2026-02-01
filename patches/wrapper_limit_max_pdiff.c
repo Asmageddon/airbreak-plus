@@ -3,8 +3,6 @@
 
 #include "my_asv.h" // Include the asv_data_t definition
 
-#define TRC_TEST 1
-
 const float INSTANT_PS = 0.45f;
 const float EPS = 1.2f;
 
@@ -40,35 +38,6 @@ STATIC float reshape_vauto_ps(float ps1, float mult) {
   return ps1;
 }
 
-STATIC void handle_sensitivities(tracking_t *tr, float asv_factor) {
-  // If the value is changed, it means it was changed by the UI code due to user input. Update the reference value
-  if (sens_trigger != tr->settings.last_trigger) {
-    tr->settings.real_trigger = sens_trigger;
-    tr->settings.last_trigger = sens_trigger;
-  }
-  if (sens_cycle != tr->settings.last_cycle) {
-    tr->settings.real_cycle = sens_cycle;
-    tr->settings.last_cycle = sens_cycle;
-  }
-  if (tr->st_inhaling) {
-    const float cti = tr->current.ti;
-    const float s = tr->settings.real_cycle;
-    // There should be no dynamic collapse this early into the breath, if flow drops at all, it was likely an autotriggered breath.
-    if (cti <= 0.4f) { sens_cycle = (s + 0.8f) / 2.0f; }
-    else {
-      // My ASV changes shape of the flow curve, so that it peaks higher, and goes low earlier. This (maybe) accounts for that.
-      sens_cycle = s * remapc(asv_factor, 1.0f, 2.0f, 1.0f, 0.5f);
-    }
-    tr->settings.last_cycle = sens_cycle;
-  } else {
-    // Increase trigger threshold early into the exhale period to make autotriggering less likely.
-    const float cte = tr->current.te;
-    const float rte = tr->recent.te;
-    const float sens = tr->settings.real_trigger;
-    sens_trigger = remapc(cte, rte - 0.4f, rte - 0.15f, sens * 1.2f + 2.0f, sens * 1.0f);
-    tr->settings.last_trigger = sens_trigger;
-  }
-}
 
 void MAIN start() {
   history_t *hist = get_history();
@@ -85,14 +54,17 @@ void MAIN start() {
   float dps = 0.0f;
   bool toggle = (ti_min <= 150);
 
-  #if TRC_TEST == 1
-    triggercycle_t *trc = get_triggercycle();
-    if (*therapy_mode == MODE_S) { trc->custom_cycle = true; }
-    else { trc->custom_cycle = false; }
-    update_triggercycle(trc, tr);
-  #else
-    handle_sensitivities(tr, toggle ? asv->asv_factor : 1.0f);
-  #endif
+  triggercycle_t *trc = get_triggercycle();
+  trc->custom_trigger = trc->custom_cycle = false; // Default state is off.
+  if (*therapy_mode == MODE_S) {
+    trc->custom_trigger = true;
+    trc->custom_cycle = true;
+  }
+  else if (*therapy_mode == MODE_VAUTO) {
+    trc->custom_trigger = true;
+    trc->custom_cycle = true;
+  }
+  update_triggercycle(trc, tr);
 
   float new_ps = *cmd_ps;
 

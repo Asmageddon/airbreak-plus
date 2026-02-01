@@ -71,6 +71,7 @@ void *get_pointer(ptr_index index, int size, void (*init_fn)(void*)) {
 void init_history(history_t *hist) {
   for(int i=0; i<HISTORY_LENGTH; i++) {
     hist->flow[i] = 0.0f;
+    hist->cmd_ipap[i] = 0.0f;
   }
   hist->tick = -1;
   hist->last_jitter = 0;
@@ -83,7 +84,9 @@ void update_history(history_t *hist) {
   
   hist->last_time = now; // Keep it updated so we don't reset the struct
   hist->tick += 1;
-  hist->flow[hist->tick % HISTORY_LENGTH] = *flow_compensated;
+  const int i = hist->tick % HISTORY_LENGTH;
+  hist->flow[i] = *flow_compensated;
+  hist->cmd_ipap[i] = *cmd_ipap;
 }
 
 history_t *get_history() { 
@@ -101,13 +104,19 @@ float get_delta_flow(history_t *hist, int bin_size) {
 }
 
 
+bool is_cmd_ipap_constant(history_t *hist) {
+  const int t = hist->tick;
+  const int t1 = t % HISTORY_LENGTH, t2 = (t-4) % HISTORY_LENGTH;
+  return abs(hist->cmd_ipap[t1] - hist->cmd_ipap[t2]) <= 0.041f;
+}
+
 
 void apply_jitter(bool undo) {
   history_t *hist = get_history();
   if (undo) { // Undo the previous
     hist->last_jitter *= -1;
   } else { // Get new jitter value
-    hist->last_jitter = 1 - (ivars[0]/4) % 2 * 2;
+    hist->last_jitter = 1 - ((*pap_timer)/4) % 2 * 2;
   }
   // FIXME: This needs to be relative to either EPAP or IPAP, the "is the PS sufficiently different to trigger a redraw?" routine is relative to pressure.
   const float amtf = 0.01f * hist->last_jitter;
@@ -146,6 +155,7 @@ void init_tracking(tracking_t *tr) {
   init_settings(&tr->settings);
 
   init_breath(&tr->recent);
+  tr->recent.te = 2.0f; tr->recent.ti = 1.6f; tr->recent.volume_max = 0.3f; tr->recent.exh_maxflow = -25.0f; tr->recent.inh_maxflow = 25.0f; // Init with reasonable-ish defaults in case code wants to rely on these
   init_breath(&tr->last);
   init_breath(&tr->current);
 
