@@ -9,6 +9,9 @@ typedef struct {
   float real_trigger;
   float last_cycle;
   float real_cycle;
+
+  float volbased; // Custom volume accumulator that resets to 0 when flow<0
+
   bool custom_trigger : 1; // Currently unimplemented
   bool custom_cycle : 1; // Based on static-leak-compenstaed flow, as I suspect vsync is mangling cycling with non-easybreathe waveforms
 } triggercycle_t;

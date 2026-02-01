@@ -59,7 +59,7 @@ int MAIN start(void) {
 	const float p_min = 0.0f;
 	const float p_max = 20.0f;
 	
-	const unsigned pos_x = (ivars[0] / 15) % width; // ~6.66px per second (unit of timer is 10ms)
+	const unsigned pos_x = (*pap_timer / 15) % width; // ~6.66px per second (unit of timer is 10ms)
 
 	int pressure = rescale(p_actual, p_min, p_max, HEIGHT_PRES);
 	int command = rescale(p_command, p_min, p_max, HEIGHT_PRES);
