@@ -278,9 +278,19 @@ class ASFirmwarePatches(object):
         if self.asf.hash == self.known_units[0].hash:
             self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x4fa8, clobber=True)
             self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x4fc4, clobber=True)
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x52d4, clobber=True)  # unidentified. was 4..25
             self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x7eb0, clobber=True)
             self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x7ee8, clobber=True)
             self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x7ecc, clobber=True)
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x7f04, clobber=True)  # unidentified. was 4..25
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x7f20, clobber=True)  # vauto
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x7f58, clobber=True)  # unidentified. was 4..25
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x7f74, clobber=True)  # s/t/st epap
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x8038, clobber=True)  # asv
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x808c, clobber=True)  # unid. was 4..15
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x80a8, clobber=True)  # asvauto max epap
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x80c4, clobber=True)  # asvauto min epap
+            self.asf.patch(b'\xdc\x05\x00\x00\x32\x00', 0x8118, clobber=True)  # unid. was 4..15
         else:
             raise IOError("Unknown hash: %s"%self.asf.hash)
 
