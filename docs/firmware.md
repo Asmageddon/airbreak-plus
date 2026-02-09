@@ -65,8 +65,7 @@ unlock the vendor modes and configuration bits.
 
 There are several features configurable via the `patch-airsense`
 script, some of which are simple binary patches and some of which
-require a 32-bit ARM toolchain. Set them as desired per the
-documentation [here](../info/firmware-docs).
+require a 32-bit ARM toolchain.
 
 The script might fail if the hashes of your extracted firmware do not
 match the one that it expects (currently `SX567-0401`). If you have a
