@@ -14,6 +14,9 @@
 | 105			| PA13	|-| Programming Header	| 2	| SWDIO | 
 | 109			| PA14	|-| Programming Header	| 4	| SWCLK | 
 | 110			| PA15	|-| EEPROM	| 1	| ~CS | 
+| 133			| PB03	|-| EEPROM     |  	| CLK | 
+| 134			| PB04	|-| EEPROM     |  	| MISO | 
+| 135			| PB05	|-| EEPROM     |  	| MOSI | 
 | 47			| PB01	|-| POWR605     | 5	| VMON4 | 
 | 136			| PB06	|-| LTE header	| 2	| USART1_TX | 
 | 137			| PB07	|-| LTE header	| 3	| USART1_RX | 
@@ -25,6 +28,7 @@
 | 75			| PB14	|-| Motor Driver	| 20	| INL_B | 
 | 76			| PB15	|-| Motor Driver	| 18	| INL_A | 
 | 44			| PC04	|-| Pressure Sensor	| 8	|  | 
+| 27			| PC01	|-| EEPROM	| 	| WP | 
 | 98			| PC08	|-| SD Card	| 	| DAT0/D0 | 
 | 99			| PC09	|-| SD Card	| 	| DAT1/IRQ | 
 | 111			| PC10	|-| SD Card	| 9	| DAT2/NC | 
@@ -65,6 +69,8 @@
 | 13			| PF03	|-| SRAM	| 2	| ADDR_3 | 
 | 14			| PF04	|-| SRAM	| 1	| ADDR_4 | 
 | 15			| PF05	|-| SRAM	| 44	| ADDR_5 | 
+| 20			| PF08	|-| LED	| Q212/B	| LED_EN | 
+| 21			| PF09	|-| LED	| Q209/B	| LED_PWM | 
 | 49			| PF11	|-| Button/Encoder	| Close to D4007 Label	|  | 
 | 53			| PF13	|-| SRAM	| 42	| ADDR_7 | 
 | 54			| PF14	|-| SRAM	| 27	| ADDR_8 | 
