@@ -164,9 +164,19 @@ unlock_ui_limits() {
 	# patch UI limits to range between 1 and 30
 	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x4fa8 || die failed
 	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x4fc4 || die failed
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x52d4 || die failed # unidentified. was 4..25
 	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x7eb0 || die failed
 	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x7ee8 || die failed
 	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x7ecc || die failed
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x7f04 || die failed # unidentified. was 4..25
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x7f20 || die failed # vauto
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x7f58 || die failed # unidentified. was 4..25
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x7f74 || die failed # s/t/st epap
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x8038 || die failed # asv
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x808c || die failed # unid. was 4..15
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x80a8 || die failed # asvauto max epap
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x80c4 || die failed # asvauto min epap
+	printf '\xdc\x05\x00\x00\x32\x00' | patch 0x8118 || die failed # unid. was 4..15
 }
 
 asv_unlock_ps_range () {
