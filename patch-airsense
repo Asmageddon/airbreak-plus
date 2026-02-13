@@ -362,7 +362,6 @@ extra_modes # 8
 extra_menu # 16
 # all_menu # 32
 gui_config # 64
-unlock_languages
 motor_nagscreen
 unlock_languages
 
