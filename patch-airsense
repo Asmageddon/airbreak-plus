@@ -271,6 +271,16 @@ gui_config_all () {
     printf " done.\n"
 }
 
+unlock_languages () {
+   # offsets valid for all versions >= 0305
+   printf "Unlocking all languages..."
+   # make variable read only to prevent overwriting with eeprom data
+   printf '\x06' | patch 0x8428
+   # set bits for languages 1-19 except reserved (5,7) and
+   # jp (13,19), cn (16,17) (enabling them breaks system font)
+   printf '\x5f\xdf\x04\x00' | patch 0x8430
+}
+
 
 
 custom_palette() {
@@ -353,6 +363,7 @@ extra_menu # 16
 # all_menu # 32
 gui_config # 64
 motor_nagscreen
+unlock_languages
 
 asv_unlock_ps_range
 
