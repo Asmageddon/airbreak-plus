@@ -342,11 +342,24 @@ class ASFirmwarePatches(object):
             for var in [0x2f, 0x1ec, 0x1ed, 0x24, 0x25, 0x1d3,
                         0x1d6, 0x1d5, 0x1d7, 0x26, 0x1d9, 0x1e0,
                         0x1e1, 0x1e2, 0x1e5, 0x1e4, 0x1e6, 0x1e7,
-                        0x1e9, 0x1ea, 0x1eb]:
+                        0x1e9, 0x1ea, 0x1eb,
+                        0x24,  0x25,  0x26,  0x2f,  0x70,  0x1d2, 0x1d4, 0x1d8,
+                        0x1da, 0x1dc, 0x1dd, 0x1de, 0x1df, 0x1e3, 0x1e8, 0x1ee]:
                 addr = GUI_CONFIG + (var - GUI_CONFIG_OFFSET) * GUI_CONFIG_SIZE
                 self.asf.patch(b'\x07\x00', addr, clobber=True)
         else:
            raise IOError("Unknown hash: %s"%self.asf.hash)
+
+    def gui_submenus (self):
+        # enable options hidden between different firmware variants
+        # not included in gui_config (gui_limits). Trigger, Cycle etc...
+        OFFSET = self.asf.find_bytes([0x0B, 0x00, 0x73, 0x01, 0x0C])
+        OFFSET = offset - 2
+        STRUCT_SIZE=0x14
+
+        for var in [0x0A, 0x0B, 0x14, 0x15, 0x1E, 0x25, 0x26, 0x27, 0x37, 0x38, 0x39, 0x3A, 0x63, 0x64]:
+            addr = OFFSET + var * STRUCT_SIZE
+            self.asf.patch(b'\x07\x00', addr, clobber=True)
 
     def patch_logos(self):
 
@@ -464,8 +477,11 @@ if __name__ == "__main__":
         {'arg':"patch-extra-modes",     'desc':"Add all modes.",                                        'default':True,  'function':'extra_modes',       'flags':(1<<3)},
         {'arg':"patch-extra-menu",      'desc':"Try enabling extra menu items.",                        'default':True,  'function':'extra_menu',        'flags':(1<<4)},
         {'arg':"patch-all-menu",        'desc':"All menu items will always be visible.",                'default':False, 'function':'all_menu',          'flags':(1<<5)},
-        {'arg':"patch-gui-config",      'desc':"Enable all of the editable options in the settings menu.", 'default':True,'function':'gui_config',       'flags':(1<<6)},
-        {'arg':"patch-logos",           'desc':"Change start-up logos.",                                'default':False,  'function':'patch_logos',      'flags':(1<<0)},
+        {'arg':"patch-gui-config",      'desc':"Enable all of the editable options in the settings menu.",
+                                                                                                        'default':True,'  function':'gui_config',        'flags':(1<<6)},
+        {'arg':"patch-gui-submenus",    'desc':"Enable editable options in the settings menu not covered by patch-gui-config",
+                                                                                                        'default':True,  'function':'gui_submenus',      'flags':(1<<6)},
+        {'arg':"patch-logos",           'desc':"Change start-up logos.",                                'default':False, 'function':'patch_logos',       'flags':(1<<0)},
         {'arg':"patch-fw-serialmonitor",'desc':"Add monitor binary running on USART3 accessory port.",  'default':False, 'function':'patch_uart3_monitor','flags':(1<<0)},
         {'arg':"patch-fw-breath",       'desc':"Add breath binary to allow direct pressure control.",   'default':False, 'function':'patch_breath',      'flags':(1<<0)},
         {'arg':"patch-fw-graph",        'desc':"Add graph binary to allow graphing of pressures.",      'default':False, 'function':'patch_graph',       'flags':(1<<0)},
