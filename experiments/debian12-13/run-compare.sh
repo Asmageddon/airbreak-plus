@@ -8,6 +8,16 @@ cd "$ROOT_DIR"
 RUN_REMEDIATION="${RUN_REMEDIATION:-1}"
 FAIL_ON_ANY="${FAIL_ON_ANY:-0}"
 
+if [[ -t 1 ]]; then
+    COLOR_PASS=$'\033[32m'
+    COLOR_FAIL=$'\033[31m'
+    COLOR_RESET=$'\033[0m'
+else
+    COLOR_PASS=""
+    COLOR_FAIL=""
+    COLOR_RESET=""
+fi
+
 declare -a NAMES
 declare -a IMAGES
 declare -a DOCKERFILES
@@ -84,18 +94,23 @@ for i in "${!NAMES[@]}"; do
     EXIT_CODES+=("$code")
     if [[ "$code" -eq 0 ]]; then
         RESULTS+=("PASS")
-        echo " - ${NAMES[$i]}: PASS"
+        echo " - ${NAMES[$i]}: ${COLOR_PASS}PASS${COLOR_RESET}"
     else
         RESULTS+=("FAIL")
-        echo " - ${NAMES[$i]}: FAIL (exit=$code)"
+        echo " - ${NAMES[$i]}: ${COLOR_FAIL}FAIL${COLOR_RESET} (exit=$code)"
     fi
 done
 
 echo "[4/4] Result matrix"
 for i in "${!NAMES[@]}"; do
-    echo " - ${NAMES[$i]} | ${RESULTS[$i]} | exit=${EXIT_CODES[$i]}"
-    echo "   gcc: ${GCC_LINES[$i]}"
-    echo "   ld : ${LD_LINES[$i]}"
+    if [[ "${RESULTS[$i]}" == "PASS" ]]; then
+        status_colored="${COLOR_PASS}${RESULTS[$i]}${COLOR_RESET}"
+    else
+        status_colored="${COLOR_FAIL}${RESULTS[$i]}${COLOR_RESET}"
+    fi
+    echo "- ${NAMES[$i]} | ${status_colored} | exit=${EXIT_CODES[$i]}"
+    echo "    gcc: ${GCC_LINES[$i]}"
+    echo "    ld : ${LD_LINES[$i]}"
 done
 
 if [[ "$FAIL_ON_ANY" == "1" ]]; then
