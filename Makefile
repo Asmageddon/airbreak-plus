@@ -6,6 +6,9 @@ BUILD=build
 
 all: $(BUILD)/stm32-patched.bin $(BUILD)/stm32-asv.bin
 
+$(BUILD):
+	mkdir -p $(BUILD)
+
 $(BUILD)/stm32-patched.bin: patch-airsense $(BUILD)/common_code.bin $(BUILD)/graph.bin
 	export PATCH_CODE=1 && ./patch-airsense stm32.bin $@
 
@@ -91,7 +94,7 @@ $(BUILD)/%.o: $(SRC)/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 $(BUILD)/%.o: $(SRC)/%.S
 	$(AS) $(ASFLAGS) -c -o $@ $<
-$(BUILD)/%.elf:
+$(BUILD)/%.elf: | $(BUILD)
 	$(LD) $(LDFLAGS) -o $@ $^
 
 $(BUILD)/%.bin: $(BUILD)/%.elf
