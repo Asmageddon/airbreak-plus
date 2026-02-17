@@ -60,6 +60,8 @@ check_hash() {
         echo "$IN: AirSense 10 Elite 37123-SX567-0401 binary identified"
     elif [[ $HASH == "5bd9b8b44b094c150c7ef996236fa4fe38421a08ce6b09811bb6ecb8955fc85a" ]] ; then
         echo "$IN: AirSense 10 AutoSet For Her 37105-SX567-0401 binary identified"
+    elif [[ $HASH == "80a2a71e52cc478595de2485efd1784f8b33c56557b1d529467d477201de1735" ]] ; then
+        echo "$IN: AirSense 10 AutoSet For Her 3G 37454-SX567-0401 binary identified"
     else
         die "$IN: Unidentified binary. Confirm its version is 0401 and that its binary has the same section layout"
     fi

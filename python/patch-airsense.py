@@ -253,6 +253,7 @@ class ASFirmwarePatches(object):
         ASUnits("AirSense 10 Elite", "37117", "SX567-0401", "7ad0812dbe3a4cc79dc85df9781e64fdb9b2da75be957c1515188abac65d30ad"),
         ASUnits("AirSense 10 Elite", "37123", "SX567-0401", "860563488a1475b6aa4829ff4a370225bb8c56d89c913a2413d61fecb637ab12"),
         ASUnits("AirSense 10 AutoSet For Her", "37105", "SX567-0401", "5bd9b8b44b094c150c7ef996236fa4fe38421a08ce6b09811bb6ecb8955fc85a"),
+        ASUnits("AirSense 10 AutoSet For Her 3G", "37454", "SX567-0401", "80a2a71e52cc478595de2485efd1784f8b33c56557b1d529467d477201de1735"),
     ]
         
     def __init__(self, asf):
