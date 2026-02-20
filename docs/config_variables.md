@@ -25,7 +25,7 @@ Both tables share a common **flags ushort at byte 0** and follow a two-layer arc
 | +0x02  | 1    | byte    | **callback_id** | Post-change callback index. 0 = none. Non-zero selects a function from a jump table (`FUN_08075f3c`). Checked by `FUN_0806aeb8` as a boolean ("has callback"). |
 | +0x03  | 1    | byte    | *(padding/unused)* | |
 | +0x04  | 2    | short   | **linked_var_id** | Index into `globals[4]` table (0x7FFF = none/terminator). Used by `global_0x10_ee8()` to walk a chain of up to 4 dependent [4] variables, propagating updates. The chain follows `globals[4][id].next_var_id` at `[4]+0x04`. |
-| +0x06  | 2    | —       | *(unaccessed)* | |
+| +0x06  | 2    | short   | **name_str_id** | variable name string_id|
 | +0x08  | 1    | byte    | **default_value** | Default state/value byte. Copied to `RAM + index*4 + 2` on init by `variable_table_copy_and_slice()`. |
 | +0x09  | 1    | byte    | **num_options** | Number of valid options/entries for this variable. Used as loop bound in string enumeration, and compared against current value for range checking. |
 | +0x0A  | 2    | —       | *(unaccessed)* | |
@@ -58,7 +58,7 @@ The `linked_var_id` at +0x04 provides a *direct* link into `globals[4]` for depe
 | +0x02  | 1    | byte    | **callback_id** | Post-change callback index (same semantics as [8]+0x02). Referenced via `param_1[4] + 2` in `task_something_maybe`. |
 | +0x03  | 1    | byte    | *(unknown/pad)* | |
 | +0x04  | 2    | short   | **next_var_id** | Linked-list pointer: index of next dependent variable in `globals[4]` (0x7FFF = end of chain). Used by `global_0x10_ee8()` to walk up to 4 chained variables. `globals[8]` entries point into this chain via their `linked_var_id` at [8]+0x04. |
-| +0x06  | 2    | —       | *(unaccessed)* | |
+| +0x06  | 2    | short   | **name_str_id** | variable name string_id|
 | +0x08  | 4    | int32   | **default_value** | Default value. Copied to RAM value field on init. Loaded by `FUN_0806b3ba` to reset variable to default. |
 | +0x0C  | 4    | int32   | **max_value** | Maximum allowed value (upper clamp). Used by clamping logic: `if (value > max) value = max`. Also used by `FUN_08075650` for display width calculation, and `FUN_0806fcf8` for option count. |
 | +0x10  | 4    | int32   | **min_value** | Minimum allowed value (lower clamp). Used by clamping logic: `if (value < min) value = min`. |
