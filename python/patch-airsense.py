@@ -294,6 +294,21 @@ class ASFirmwarePatches(object):
         else:
             raise IOError("Unknown hash: %s"%self.asf.hash)
 
+    def unlock_languages(self):
+        """
+            it would be best to read 7th pointer from globals table (global_var_0x6) and go to 7th var descriptor, like
+            var_bitmask_addr = ((void **)0x08004108)[6] + 6*0x1c
+            var_value_addr = $var_bitmask_addr + 8
+            but hardcoded offset works for almost all firmwares...
+        """
+        if self.asf.hash == self.known_units[0].hash:
+            # make variable read olny
+            self.asf.patch(b'\x06', 0x8428, clobber=True)
+            # set bits for all languages except asian (breaks font) and reserved (5,7)
+            self.asf.patch(b'\x5f\xdf\x04\x00', 0x8430, clobber=True)
+        else:
+            raise IOError("Unknown hash: %s"%self.asf.hash)
+
     def extra_debug(self):
         # set config variable 0xc value to 4 == enable more debugging data on display
         # if you set it to \x0f it will enable four separate display pages of info in sleep report mode
@@ -460,6 +475,7 @@ if __name__ == "__main__":
     patch_list_yn = [
         {'arg':"patch-bypass-start",    'desc':"Bypass checks that block start-up.",                    'default':True,  'function':'bypass_startcheck', 'flags':0},
         {'arg':"patch-unlock-uilimits", 'desc':"Unlock higher UI limits.",                              'default':True,  'function':'unlock_ui_limits',  'flags':(1<<1)},
+        {'arg':"patch-unlock-languages",'desc':"Unlock all built-in languages",                         'default':True,  'function':'unlock_languages',  'flags':(1<<0)},
         {'arg':"patch-extra-debug",     'desc':"Add extra debug to display.",                           'default':True, 'function':'extra_debug',       'flags':(1<<2)},
         {'arg':"patch-extra-modes",     'desc':"Add all modes.",                                        'default':True,  'function':'extra_modes',       'flags':(1<<3)},
         {'arg':"patch-extra-menu",      'desc':"Try enabling extra menu items.",                        'default':True,  'function':'extra_menu',        'flags':(1<<4)},
