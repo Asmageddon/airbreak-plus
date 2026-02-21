@@ -2,14 +2,14 @@
 
 `global_struct()` returns `&globals`, a pointer to an array of pointers. Each pointer leads to a descriptor table that defines a class of firmware variables. The two primary tables are:
 
-- **`globals[4]`** — Main therapy/setting variable descriptors (0x1DF entries, 0x1C-byte records)
-- **`globals[8]`** — Menu/UI variable descriptors (0xA5 entries, 0x14-byte records)
+- **`globals[4]`** — numeric variable descriptors (0x1DF entries, 0x1C-byte records)
+- **`globals[8]`** — enum/option variable descriptors (0xA5 entries, 0x14-byte records)
 
 Both tables share a common **flags ushort at byte 0** and follow a two-layer architecture: ROM descriptors define static properties, and RAM shadow copies hold mutable runtime state.
 
 ---
 
-## `globals[8] (variable_types_table)` — Menu/UI Variable Descriptors
+## `globals[8] (variable_types_table)` — Enum/Option Variable Descriptors
 
 **Record stride:** 0x14 (20 bytes)  
 **Entry count:** 0xA5 (165)  
@@ -33,15 +33,32 @@ Both tables share a common **flags ushort at byte 0** and follow a two-layer arc
 | +0x10  | 2    | short   | **base_string_id** | Base string ID for `string_lookup()` via `globals[2]`. Value 0xDE = no string / sentinel. When valid, `base_string_id + option_index` gives the string for each option. |
 | +0x12  | 2    | —       | *(unaccessed)* | |
 
+### Option Strings
+
+Option labels are sequential string IDs starting from `base_str_id`:
+* Option 0: `base_str_id + 0`
+* Option 1: `base_str_id + 1`
+* ...
+* Option N-1: `base_str_id + (N-1)`
+
+If `base_str_id == 0xDE`, the entry has no associated strings.
+
+
 ### Cross-reference to `globals[4] (gui_limits)`
 
 For entries with `index >= 0xA3`, the function `arg_minus_0xa1(index)` computes `index - 0xA1` as a corresponding index into `globals[4]`. This is stored in handler object field `[6]` and used for value persistence. So `globals[8]` entries 0xA3–0xA4 map to `globals[4]` entries 0x02–0x03, etc. Entries < 0xA3 return -1 (no [4] mapping).
 
 The `linked_var_id` at +0x04 provides a *direct* link into `globals[4]` for dependency propagation — this is separate from the index-based `arg_minus_0xa1` mapping.
 
+`FUN_080658f6(buf, [8]_var, flag, [4]_var)` 
+
+Creates a **combined enum+numeric widget**. The [8] var provides the selector
+(e.g. "Min" vs a numeric value), and the [4] var provides the numeric editor
+(e.g. 150–900 ms in 50ms steps).
+
 ---
 
-## `globals[4] (gui_limits)` — Main Therapy/Setting Variable Descriptors
+## `globals[4] (gui_limits)` — Numeric Variable Descriptors
 
 **Record stride:** 0x1C (28 bytes)  
 **Entry count:** 0x1DF (479)  
@@ -68,6 +85,7 @@ The `linked_var_id` at +0x04 provides a *direct* link into `globals[4]` for depe
 | +0x18  | 2    | short   | **step_size** | Increment/decrement step. Used by increment (`value += step`), decrement (`value -= step`), and rounding/snap-to-grid (`value mod step`). |
 | +0x1A  | 2    | ushort  | **units_string_id** | String ID for the units/suffix label (e.g., "cmH₂O", "min", "%"). Looked up via `string_lookup_also()` through `globals[2]`. |
 
+
 ### Sub-handler Ranges within `globals[4]`
 
 The 0x1DF entries are partitioned into sub-ranges with different handler types:
@@ -79,6 +97,10 @@ The 0x1DF entries are partitioned into sub-ranges with different handler types:
 | 0x1D4 – 0x1D8 | 0x1F2 – 0x1F6 | `FUN_0806c02c` | Handler size 0x20. |
 | 0x1D9 – 0x1DC | 0x1F7 – 0x1FA | `FUN_0806c406` / `FUN_0806c58e` | Handler size 0x20. |
 | 0x1DD – 0x1DE | 0x1FB – 0x1FC | `FUN_0806c68c` | Stores `arg_minus_0x1dd(id)` in handler[7] — cross-index. |
+
+TODO:
+Some entries (0x1D3+ ?) use a small structure accessed via globals[5]. (display name override?)
+
 
 ---
 
@@ -98,6 +120,8 @@ Both `globals[4]` and `globals[8]` (and `globals[3]`, `globals[6]`) use the same
 | 5   | 0x20 | — | `dispatch_0x80_and_0xb0` (sets) | **Dirty/Changed** — set when a value change is committed. |
 | 6   | 0x40 | — | ROM only; **always cleared** on boot (`& 0xFFBF`) | **Factory default marker** — present in ROM descriptors, unconditionally cleared in all RAM shadow copies during init. Likely flags entries that have meaningful ROM defaults. |
 | 7   | 0x80 | — | — | Unused (low byte). |
+
+TODO: check if VIS/EDT are not swapped. contradicting findings.
 
 ### GUI Widget Status Byte (derived layer)
 
