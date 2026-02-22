@@ -466,15 +466,17 @@ Examples:
         crc_ok = True
         for block_id, data, _ in jobs:
             if block_id == 'CMX':
-                # CMX spans CCX + CDX, check both sub-block CRCs
+                ccx_size = BLOCKS['CCX']['size']
+                cdx_offset = BLOCKS['CDX']['file_offset'] - BLOCKS['CMX']['file_offset']
                 sub_blocks = [
-                    ('CCX', data[:BLOCKS['CCX']['size']]),
-                    ('CDX', data[BLOCKS['CDX']['file_offset'] - BLOCKS['CMX']['file_offset']:]),
+                    ('CCX', 0, ccx_size),
+                    ('CDX', cdx_offset, len(data)),
                 ]
             else:
-                sub_blocks = [(block_id, data)]
+                sub_blocks = [(block_id, 0, len(data))]
 
-            for sub_id, sub_data in sub_blocks:
+            for sub_id, start, end in sub_blocks:
+                sub_data = data[start:end]
                 stored, computed, match = check_block_crc(sub_data, sub_id)
                 status = "OK" if match else "MISMATCH"
                 icon = "+" if match else "!"
@@ -482,8 +484,10 @@ Examples:
 
                 if not match:
                     if args.fix_crc:
-                        new_crc = fix_block_crc(sub_data, sub_id)
-                        print(f"        Fixed CRC -> 0x{new_crc:04X}")
+                        crc = crc16_ccitt(data[start:end-2])
+                        data[end-2] = (crc >> 8) & 0xFF
+                        data[end-1] = crc & 0xFF
+                        print(f"        Fixed CRC -> 0x{crc:04X}")
                     elif not args.force:
                         crc_ok = False
 
