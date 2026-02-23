@@ -66,6 +66,38 @@ check_hash() {
 
 }
 
+
+crc16_region() {
+    # args: offset length
+    local offset=$(printf "%d" "$1")
+    local length=$(printf "%d" "$2")
+
+    dd if="$OUT" bs=1 skip="$offset" count="$length" status=none | \
+    perl -e '
+        use strict;
+        use warnings;
+
+        binmode STDIN;
+
+        my $crc = 0xFFFF;
+
+        while (read(STDIN, my $buf, 4096)) {
+            foreach my $byte (unpack("C*", $buf)) {
+                $crc ^= ($byte << 8);
+                for (1..8) {
+                    if ($crc & 0x8000) {
+                        $crc = (($crc << 1) ^ 0x1021) & 0xFFFF;
+                    } else {
+                        $crc = ($crc << 1) & 0xFFFF;
+                    }
+                }
+            }
+        }
+
+        printf "%04X\n", $crc;
+    '
+}
+
 cp "$IN" "$OUT" || die "$OUT: copy failed"
 
 patch_tamper() {
@@ -335,6 +367,36 @@ motor_nagscreen () {
     printf '\x05\xe0' | patch $patch_addr
 }
 
+patch_crc() {
+    local base=0x08000000
+
+    local regions=(
+        "0x08000000 0x4000"
+        "0x08004000 0x3c000"
+        "0x08040000 0xc0000"
+    )
+
+    local addr len offset payload_len crc hi lo
+
+    echo "Updating checksums"
+
+    for r in "${regions[@]}"; do
+        read -r addr len <<< "$r"
+
+        offset=$(( addr - base ))
+        payload_len=$(( len - 2 ))
+
+        crc=$(crc16_region "$offset" "$payload_len") || {
+            echo "${FUNCNAME[0]}: CRC calculation failed"
+            return 1
+        }
+
+        printf "  block @0x%08X -> CRC %s\n" "$addr" "$crc"
+
+        printf '%b' "\x${crc:0:2}" "\x${crc:2:2}" | patch $(( offset + payload_len ))
+    done
+}
+
 check_hash
 
 patch_tamper
@@ -365,5 +427,6 @@ custom_palette #128
 #COMMIT_HASH=$(git log -n1 --format=format:"%H" | head -c 7)
 #printf 'GIT=%s\x00' $COMMIT_HASH | patch 0x17764
 
+patch_crc # ALWAYS keep it as last patch applied
 
 sha256sum $OUT
