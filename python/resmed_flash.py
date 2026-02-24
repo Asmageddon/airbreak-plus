@@ -334,7 +334,7 @@ def flash_block(ser, block_id, data, flash_start, dry_run=False):
 
     print(f"\n{'='*60}")
     print(f"  Block: {block_id} ({blk['name']})")
-    print(f"  Flash: 0x{flash_start:08X} — 0x{flash_start + len(data):08X}")
+    print(f"  Flash: 0x{flash_start:08X} - 0x{flash_start + len(data):08X}")
     print(f"  Data:  {data_end:,} bytes (trimmed from {len(data):,})")
     print(f"{'='*60}")
 
@@ -396,7 +396,7 @@ def flash_block(ser, block_id, data, flash_start, dry_run=False):
     elapsed = time.time() - t0
     print(f"\r    {offset:,}/{data_end:,} (100%) in {elapsed:.1f}s, {frame_count} frames          ")
 
-    # Completion frame
+    # Completion frame 
     print("[*] Sending completion frame...")
     ser.write(build_completion_frame(block_name, seq))
     ser.flush()
@@ -554,7 +554,21 @@ Examples:
             if target != ser.baudrate:
                 switch_baud(ser, target)
 
-        for block_id, data, flash_start in jobs:
+        for i, (block_id, data, flash_start) in enumerate(jobs):
+            if i > 0:
+                # Completion frame reset the bootloader. re-enter and re-negotiate
+                print("\n[*] Re-entering bootloader for next block...")
+                time.sleep(0.5)
+                if ser.baudrate != 57600:
+                    ser.baudrate = 57600
+                if not enter_bootloader(ser, 10):
+                    return 1
+                if args.baud == 'auto':
+                    negotiate_best_baud(ser)
+                else:
+                    target = int(args.baud)
+                    if target != ser.baudrate:
+                        switch_baud(ser, target)
             if not flash_block(ser, block_id, data, flash_start):
                 print(f"\n[!] Failed to flash {block_id}")
                 return 1
