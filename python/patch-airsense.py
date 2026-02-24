@@ -261,7 +261,9 @@ class ASFirmwarePatches(object):
     def bypass_startcheck(self):
         #Start-up check for CRC etc, bypass it to avoid (might not be needed)
         if self.asf.hash == self.known_units[0].hash:
-            asf.patch(b'\xc0\x46', 0xF0, clobber=True)
+            asf.patch(b'\x01\x20\xc0\x46', 0x310e, clobber=True) # BLX
+            asf.patch(b'\x00\x20\xc0\x46', 0x313e, clobber=True) # CCX
+            asf.patch(b'\x00\x20\xc0\x46', 0x3130, clobber=True) # CDX
         else:
             raise IOError("Unknown hash: %s"%self.asf.hash)
             
