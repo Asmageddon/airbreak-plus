@@ -38,7 +38,7 @@ BLOCK_ALIASES = {
     'bootloader': 'BLX', 'boot': 'BLX', 'blx': 'BLX',
     'config': 'CCX', 'conf': 'CCX', 'ccx': 'CCX',
     'firmware': 'CDX', 'fw': 'CDX', 'cdx': 'CDX',
-    'all': 'CMX', 'cmx': 'CMX',
+    'cmx': 'CMX',
 }
 
 
@@ -255,50 +255,65 @@ SIZE_TO_BLOCK = {
     0xFC000: 'CMX',
 }
 
-def detect_input(file_data: bytes, block_arg: str, include_bootloader: bool):
+def detect_input(file_data: bytes, block_args: list, include_bootloader: bool):
     """
-    Determine what to flash based on file size and --block argument.
+    Determine what to flash based on file size and --block argument(s).
     Returns list of (block_id, data_bytes, flash_start_addr) tuples.
     """
     fsize = len(file_data)
     is_full_image = (fsize == FULL_IMAGE_SIZE)
 
-    # If --block specified, resolve it
-    if block_arg:
-        block_id = BLOCK_ALIASES.get(block_arg.lower())
-        if not block_id:
-            print(f"[!] Unknown block '{block_arg}'. Use: config, firmware, all, bootloader")
-            return None
+    if block_args:
+        requested = []
+        for arg in block_args:
+            key = arg.lower()
+            if key == 'all':
+                requested.extend(['BLX', 'CMX'])
+            else:
+                block_id = BLOCK_ALIASES.get(key)
+                if not block_id:
+                    print(f"[!] Unknown block '{arg}'. Use: config, firmware, all, bootloader, cmx")
+                    return None
+                requested.append(block_id)
+    else:
+        requested = ['BLX', 'CMX']
+
+    # Deduplicate preserving order
+    seen = set()
+    unique = []
+    for bid in requested:
+        if bid not in seen:
+            seen.add(bid)
+            unique.append(bid)
+
+    jobs = []
+    for block_id in unique:
+        if block_id == 'BLX' and not include_bootloader:
+            print(f"[*] Skipping {block_id} (use --include-bootloader to include)")
+            continue
+
         blk = BLOCKS[block_id]
         if is_full_image:
             data = file_data[blk['file_offset']:blk['file_offset'] + blk['size']]
-        elif fsize == blk['size']:
+        elif len(unique) == 1 and fsize == blk['size']:
+            # Single standalone block file
             data = file_data
+        elif fsize in SIZE_TO_BLOCK and len(unique) == 1:
+            print(f"[!] File size {fsize} doesn't match {block_id} ({blk['size']})")
+            return None
         else:
-            print(f"[!] File size {fsize} doesn't match {block_id} ({blk['size']}) or full image ({FULL_IMAGE_SIZE})")
+            print(f"[!] Need full image ({FULL_IMAGE_SIZE} bytes) for this operation")
             return None
-        if block_id == 'BLX' and not include_bootloader:
-            print("[!] Bootloader flash requires --include-bootloader")
-            return None
-        return [(block_id, bytearray(data), blk['flash_start'])]
 
-    # Auto-detect from file size
-    if is_full_image:
-        # Default: flash config + firmware (CMX), skip bootloader
-        blk = BLOCKS['CMX']
-        data = file_data[blk['file_offset']:blk['file_offset'] + blk['size']]
-        return [('CMX', bytearray(data), blk['flash_start'])]
-    elif fsize in SIZE_TO_BLOCK:
-        block_id = SIZE_TO_BLOCK[fsize]
-        blk = BLOCKS[block_id]
-        if block_id == 'BLX' and not include_bootloader:
-            print("[!] Bootloader flash requires --include-bootloader")
-            return None
-        return [(block_id, bytearray(file_data), blk['flash_start'])]
-    else:
-        print(f"[!] Unknown file size {fsize}. Use --block to specify target.")
-        print(f"    Known sizes: 1MB (full), 240KB (config), 768KB (firmware), 1008KB (config+fw)")
+        jobs.append((block_id, bytearray(data), blk['flash_start']))
+
+    if not jobs:
+        print("[!] No blocks to flash")
         return None
+
+    # Sort by flash address (BLX before CMX)
+    jobs.sort(key=lambda j: j[2])
+    return jobs
 
 
 CHUNK_SIZE = 250
@@ -414,14 +429,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Blocks:
+  all               BLX + CMX (default)
   config (CCX)      Configuration data (240KB)
   firmware (CDX)    Application firmware (768KB)
-  all (CMX)         Config + Firmware (1008KB)
+  cmx (CMX)         Config + Firmware combined (1008KB)
   bootloader (BLX)  Bootloader (16KB, requires --include-bootloader)
 
 Examples:
-  %(prog)s -p /dev/ttyACM0 -f dump.bin                    Flash config+firmware
+  %(prog)s -p /dev/ttyACM0 -f dump.bin                    Flash CMX (skip BLX)
+  %(prog)s -p /dev/ttyACM0 -f dump.bin --include-bootloader  Flash BLX + CMX
   %(prog)s -p /dev/ttyACM0 -f dump.bin --block config      Flash config only
+  %(prog)s -p /dev/ttyACM0 -f dump.bin --block blx --block cmx --include-bootloader
   %(prog)s -p /dev/ttyACM0 -f config.bin                   Auto-detect 240KB config
   %(prog)s -p /dev/ttyACM0 -f dump.bin --fix-crc           Fix CRC before flash
   %(prog)s -p /dev/ttyACM0 -f dump.bin --dry-run           Validate without flashing
@@ -429,7 +447,7 @@ Examples:
 """)
     parser.add_argument('-p', '--port', required=True, help='Serial port')
     parser.add_argument('-f', '--file', help='Firmware file to flash')
-    parser.add_argument('--block', help='Target block: config, firmware, all, bootloader')
+    parser.add_argument('--block', action='append', help='Target block (repeatable): config, firmware, all, bootloader')
     parser.add_argument('--baud', default='auto', help='Transfer baud: auto, 57600, 115200, 460800')
     parser.add_argument('--fix-crc', action='store_true', help='Recalculate and patch CRC')
     parser.add_argument('--force', action='store_true', help='Flash even with bad CRC')
