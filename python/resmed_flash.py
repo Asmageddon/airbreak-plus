@@ -194,7 +194,9 @@ def enter_bootloader(ser, max_retries=3):
             continue
         print("[*] Triggering reboot...")
         ser.reset_input_buffer()
-        ser.write(build_q_frame("P S #RES 0001"))
+        #ser.write(build_q_frame("P S #RES 0001"))
+        #ser.write(build_q_frame("P S #RES 0003"))
+        ser.write(build_q_frame("P S #BLL 0001"))
         ser.flush()
         time.sleep(0.05)
         ser.reset_input_buffer()
