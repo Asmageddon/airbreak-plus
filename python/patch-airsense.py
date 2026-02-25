@@ -260,10 +260,20 @@ class ASFirmwarePatches(object):
 
     def bypass_startcheck(self):
         #Start-up check for CRC etc, bypass it to avoid (might not be needed)
-        if self.asf.hash == self.known_units[0].hash:
-            asf.patch(b'\xc0\x46', 0xF0, clobber=True)
+        loader = self.asf.str_loader_ver.strip('\x00')
+
+        if loader.startswith('SX577-0200'):
+            # AirSense / AirCurve variant
+            asf.patch(b'\x01\x20\xc0\x46', 0x310e, clobber=True) # BLX
+            asf.patch(b'\x00\x20\xc0\x46', 0x313e, clobber=True) # CCX
+            asf.patch(b'\x00\x20\xc0\x46', 0x3130, clobber=True) # CDX
+        elif loader.startswith('SX585-0200'):
+            # Lumis
+            self.asf.patch(b'\x01\x20\xc0\x46', 0x316e, clobber=True) # BLX
+            self.asf.patch(b'\x00\x20\xc0\x46', 0x319e, clobber=True) # CCX
+            self.asf.patch(b'\x00\x20\xc0\x46', 0x3190, clobber=True) # CDX
         else:
-            raise IOError("Unknown hash: %s"%self.asf.hash)
+            raise IOError("Unknown bootloader version: '%s' (hash: %s)" % (loader, self.asf.hash))
             
     def change_text(self):
         if self.asf.hash == self.known_units[0].hash:
