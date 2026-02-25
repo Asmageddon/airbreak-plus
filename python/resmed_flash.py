@@ -21,18 +21,32 @@ import sys
 import struct
 
 
-BLOCKS = {
-    'BLX': {'flash_start': 0x08000000, 'file_offset': 0x00000, 'size': 0x04000,
-            'name': 'Bootloader', 'erase_cmd': 'P F *BLX 0000'},
-    'CCX': {'flash_start': 0x08004000, 'file_offset': 0x04000, 'size': 0x3C000,
-            'name': 'Config',     'erase_cmd': 'P F *CCX 0000'},
-    'CDX': {'flash_start': 0x08040000, 'file_offset': 0x40000, 'size': 0xC0000,
-            'name': 'Firmware',   'erase_cmd': 'P F *CDX 0000'},
-    'CMX': {'flash_start': 0x08004000, 'file_offset': 0x04000, 'size': 0xFC000,
-            'name': 'Config+FW',  'erase_cmd': 'P F *CMX 0000'},
+BLOCK_MAPS = {
+    'SX577-0200': {
+        'BLX': {'flash_start': 0x08000000, 'file_offset': 0x00000, 'size': 0x04000,
+                'name': 'Bootloader', 'erase_cmd': 'P F *BLX 0000'},
+        'CCX': {'flash_start': 0x08004000, 'file_offset': 0x04000, 'size': 0x3C000,
+                'name': 'Config',     'erase_cmd': 'P F *CCX 0000'},
+        'CDX': {'flash_start': 0x08040000, 'file_offset': 0x40000, 'size': 0xC0000,
+                'name': 'Firmware',   'erase_cmd': 'P F *CDX 0000'},
+        'CMX': {'flash_start': 0x08004000, 'file_offset': 0x04000, 'size': 0xFC000,
+                'name': 'Config+FW',  'erase_cmd': 'P F *CMX 0000'},
+    },
+    'SX585-0200': {
+        'BLX': {'flash_start': 0x08000000, 'file_offset': 0x00000, 'size': 0x04000,
+                'name': 'Bootloader', 'erase_cmd': 'P F *BLX 0000'},
+        'CCX': {'flash_start': 0x08004000, 'file_offset': 0x04000, 'size': 0x1C000,
+                'name': 'Config',     'erase_cmd': 'P F *CCX 0000'},
+        'CDX': {'flash_start': 0x08020000, 'file_offset': 0x20000, 'size': 0xE0000,
+                'name': 'Firmware',   'erase_cmd': 'P F *CDX 0000'},
+        'CMX': {'flash_start': 0x08004000, 'file_offset': 0x04000, 'size': 0xFC000,
+                'name': 'Config+FW',  'erase_cmd': 'P F *CMX 0000'},
+    },
 }
 
-FULL_IMAGE_SIZE = 0x100000   # 1MB
+SUPPORTED_BIDS = {'SX577-0200'}
+
+FULL_IMAGE_SIZE = 0x100000
 
 BLOCK_ALIASES = {
     'bootloader': 'BLX', 'boot': 'BLX', 'blx': 'BLX',
@@ -137,15 +151,49 @@ def sync_uart(ser):
     ser.reset_input_buffer()
 
 
+def _extract_bid(responses):
+    for r in responses:
+        if b'BID' in r['payload']:
+            text = r['payload'].decode('ascii', errors='replace')
+            if '= ' in text:
+                return text.split('= ', 1)[1].strip().rstrip('\x00')
+            parts = text.split('BID ', 1)
+            if len(parts) > 1:
+                return parts[1].strip().rstrip('\x00')
+    return None
+
+def query_bid(ser):
+    _, resp = send_cmd(ser, "G S #BID", timeout=0.5, quiet=True)
+    return _extract_bid(resp)
+
+def bid_from_image(image_data):
+    """Extract BID from BLX region of a full image (version string near end of BLX)."""
+    BLX_SIZE = 0x04000
+    if len(image_data) < BLX_SIZE:
+        return None
+    blx = image_data[:BLX_SIZE]
+    for off in range(BLX_SIZE - 16, BLX_SIZE // 2, -1):
+        chunk = blx[off:off+10]
+        if (chunk[:2] == b'SX' and chunk[5:6] == b'-'
+                and all(0x30 <= b <= 0x39 for b in chunk[2:5])
+                and all(0x30 <= b <= 0x39 for b in chunk[6:10])):
+            return chunk.decode('ascii')
+    return None
+
+def get_blocks(bid):
+    return BLOCK_MAPS.get(bid)
+
+
 def probe_baud(ser):
     for rate in PROBE_RATES:
         ser.baudrate = rate
         ser.reset_input_buffer()
         time.sleep(0.05)
         _, resp = send_cmd(ser, "G S #BID", timeout=0.3, quiet=True)
-        if any(b'BID' in r['payload'] for r in resp):
-            return rate
-    return None
+        bid = _extract_bid(resp)
+        if bid:
+            return rate, bid
+    return None, None
 
 def switch_baud(ser, target, quiet=False):
     if target not in BDD_RATES or ser.baudrate == target:
@@ -248,14 +296,8 @@ def fix_block_crc(data: bytearray, block_id: str) -> int:
     return crc
 
 
-SIZE_TO_BLOCK = {
-    0x04000: 'BLX',
-    0x3C000: 'CCX',
-    0xC0000: 'CDX',
-    0xFC000: 'CMX',
-}
 
-def detect_input(file_data: bytes, block_args: list, include_bootloader: bool):
+def detect_input(file_data: bytes, block_args: list, include_bootloader: bool, blocks: dict):
     """
     Determine what to flash based on file size and --block argument(s).
     Returns list of (block_id, data_bytes, flash_start_addr) tuples.
@@ -292,15 +334,11 @@ def detect_input(file_data: bytes, block_args: list, include_bootloader: bool):
             print(f"[*] Skipping {block_id} (use --include-bootloader to include)")
             continue
 
-        blk = BLOCKS[block_id]
+        blk = blocks[block_id]
         if is_full_image:
             data = file_data[blk['file_offset']:blk['file_offset'] + blk['size']]
         elif len(unique) == 1 and fsize == blk['size']:
-            # Single standalone block file
             data = file_data
-        elif fsize in SIZE_TO_BLOCK and len(unique) == 1:
-            print(f"[!] File size {fsize} doesn't match {block_id} ({blk['size']})")
-            return None
         else:
             print(f"[!] Need full image ({FULL_IMAGE_SIZE} bytes) for this operation")
             return None
@@ -318,9 +356,9 @@ def detect_input(file_data: bytes, block_args: list, include_bootloader: bool):
 
 CHUNK_SIZE = 250
 
-def flash_block(ser, block_id, data, flash_start, dry_run=False):
+def flash_block(ser, block_id, data, flash_start, blocks, dry_run=False):
     """Erase and flash a single block. Returns True on success."""
-    blk = BLOCKS[block_id]
+    blk = blocks[block_id]
     block_name = block_id.encode()
 
     # Trim trailing 0xFF
@@ -410,7 +448,7 @@ def flash_block(ser, block_id, data, flash_start, dry_run=False):
 
 def cmd_info(ser):
     print("\n[*] Probing device...")
-    baud = probe_baud(ser)
+    baud, bid = probe_baud(ser)
     if not baud:
         print("[!] Device not responding")
         return 1
@@ -430,20 +468,19 @@ def main():
         epilog="""
 Blocks:
   all               BLX + CMX (default)
-  config (CCX)      Configuration data (240KB)
-  firmware (CDX)    Application firmware (768KB)
-  cmx (CMX)         Config + Firmware combined (1008KB)
-  bootloader (BLX)  Bootloader (16KB, requires --include-bootloader)
+  config (CCX)      Configuration data
+  firmware (CDX)    Application firmware
+  cmx (CMX)         Config + Firmware combined
+  bootloader (BLX)  Bootloader (requires --include-bootloader)
 
 Examples:
-  %(prog)s -p /dev/ttyACM0 -f dump.bin                    Flash CMX (skip BLX)
-  %(prog)s -p /dev/ttyACM0 -f dump.bin --include-bootloader  Flash BLX + CMX
-  %(prog)s -p /dev/ttyACM0 -f dump.bin --block config      Flash config only
+  %(prog)s -p /dev/ttyACM0 -f dump.bin                       Flash CMX (skip BLX)
+  %(prog)s -p /dev/ttyACM0 -f dump.bin --include-bootloader   Flash BLX + CMX
+  %(prog)s -p /dev/ttyACM0 -f dump.bin --block config         Flash config only
   %(prog)s -p /dev/ttyACM0 -f dump.bin --block blx --block cmx --include-bootloader
-  %(prog)s -p /dev/ttyACM0 -f config.bin                   Auto-detect 240KB config
-  %(prog)s -p /dev/ttyACM0 -f dump.bin --fix-crc           Fix CRC before flash
-  %(prog)s -p /dev/ttyACM0 -f dump.bin --dry-run           Validate without flashing
-  %(prog)s -p /dev/ttyACM0 --info                          Show device info
+  %(prog)s -p /dev/ttyACM0 -f dump.bin --fix-crc              Fix CRC before flash
+  %(prog)s -p /dev/ttyACM0 -f dump.bin --dry-run              Validate without flashing
+  %(prog)s -p /dev/ttyACM0 --info                             Show device info
 """)
     parser.add_argument('-p', '--port', required=True, help='Serial port')
     parser.add_argument('-f', '--file', help='Firmware file to flash')
@@ -456,6 +493,7 @@ Examples:
     parser.add_argument('--no-reset', action='store_true', help='Do not reset device after flash')
     parser.add_argument('--no-enter', action='store_true', help='Skip bootloader entry')
     parser.add_argument('--info', action='store_true', help='Show device info and exit')
+    parser.add_argument('--yolo', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     ser = serial.Serial(args.port, 57600, timeout=1.0)
@@ -471,74 +509,194 @@ Examples:
             file_data = f.read()
         print(f"[*] Loaded: {args.file} ({len(file_data):,} bytes)")
 
-        # detect blocks
-        jobs = detect_input(file_data, args.block, args.include_bootloader)
-        if not jobs:
-            return 1
+        is_full_image = (len(file_data) == FULL_IMAGE_SIZE)
+        flashing_blx = args.include_bootloader
 
-        print(f"\n[*] Flash plan:")
-        for block_id, data, flash_start in jobs:
-            blk = BLOCKS[block_id]
-            print(f"    {block_id} ({blk['name']}): {len(data):,} bytes @ 0x{flash_start:08X}")
+        image_bid = None
+        if is_full_image:
+            image_bid = bid_from_image(file_data)
+            if image_bid:
+                print(f"[*] Image bootloader: {image_bid}")
 
+        blx_only = (args.block is not None and all(
+            BLOCK_ALIASES.get(a.lower(), a.upper()) == 'BLX' for a in args.block))
 
-        print(f"\n[*] CRC validation:")
-        crc_ok = True
-        for block_id, data, _ in jobs:
-            if block_id == 'CMX':
-                ccx_size = BLOCKS['CCX']['size']
-                cdx_offset = BLOCKS['CDX']['file_offset'] - BLOCKS['CMX']['file_offset']
-                sub_blocks = [
-                    ('CCX', 0, ccx_size),
-                    ('CDX', cdx_offset, len(data)),
-                ]
+        # --- offline validation (no device contact) ---
+        # for full images we can resolve layout from image BID alone.
+        # device BID is only needed later for cross-flash checks.
+
+        if is_full_image and image_bid:
+            if flashing_blx and not blx_only:
+                active_bid = image_bid
             else:
-                sub_blocks = [(block_id, 0, len(data))]
+                active_bid = image_bid
+        else:
+            # standalone block file -- need device BID to pick layout.
+            # defer to online phase; use None as sentinel.
+            active_bid = None
 
-            for sub_id, start, end in sub_blocks:
-                sub_data = data[start:end]
-                stored, computed, match = check_block_crc(sub_data, sub_id)
-                status = "OK" if match else "MISMATCH"
-                icon = "+" if match else "!"
-                print(f"    [{icon}] {sub_id}: stored=0x{stored:04X} computed=0x{computed:04X} {status}")
+        if active_bid:
+            blocks = get_blocks(active_bid)
+            if not blocks:
+                if not args.yolo:
+                    print(f"[!] Unknown block layout for BID: {active_bid}")
+                    return 1
+                print(f"[!] --yolo: unknown BID {active_bid}, no block map available")
+                return 1
 
-                if not match:
-                    if args.fix_crc:
-                        crc = crc16_ccitt(data[start:end-2])
-                        data[end-2] = (crc >> 8) & 0xFF
-                        data[end-1] = crc & 0xFF
-                        print(f"        Fixed CRC -> 0x{crc:04X}")
-                    elif not args.force:
-                        crc_ok = False
+            if active_bid not in SUPPORTED_BIDS:
+                if not args.yolo:
+                    print(f"[!] BID {active_bid} is not supported")
+                    return 1
+                print(f"[!] --yolo: proceeding with non-whitelisted BID {active_bid}")
 
-        if not crc_ok:
-            print("\n[!] CRC mismatch. Use --fix-crc to repair or --force to ignore.")
-            return 1
+            # verify CDX header at expected offset
+            if is_full_image and flashing_blx and not blx_only:
+                cdx = blocks['CDX']
+                cdx_hdr = file_data[cdx['file_offset']:cdx['file_offset'] + 10]
+                if not (len(cdx_hdr) == 10 and cdx_hdr[:2] == b'SX'
+                        and cdx_hdr[5:6] == b'-'
+                        and all(0x30 <= b <= 0x39 for b in cdx_hdr[2:5])
+                        and all(0x30 <= b <= 0x39 for b in cdx_hdr[6:10])):
+                    print(f"[!] No valid CDX header at image offset 0x{cdx['file_offset']:X}")
+                    print(f"[!] Expected SXnnn-nnnn, got: {cdx_hdr}")
+                    print(f"[!] Image layout does not match {active_bid}")
+                    if not args.yolo:
+                        return 1
 
-        if args.dry_run:
-            print("\n[DRY RUN] Validation complete. No changes made.")
+            jobs = detect_input(file_data, args.block, args.include_bootloader, blocks)
+            if not jobs:
+                return 1
+
+            print(f"\n[*] Flash plan ({active_bid} layout):")
             for block_id, data, flash_start in jobs:
-                flash_block(ser, block_id, data, flash_start, dry_run=True)
-            return 0
+                blk = blocks[block_id]
+                print(f"    {block_id} ({blk['name']}): {len(data):,} bytes @ 0x{flash_start:08X}")
 
-        # baud auto or constant
+            print(f"\n[*] CRC validation:")
+            crc_ok = True
+            for block_id, data, _ in jobs:
+                if block_id == 'CMX':
+                    ccx_size = blocks['CCX']['size']
+                    cdx_offset = blocks['CDX']['file_offset'] - blocks['CMX']['file_offset']
+                    sub_blocks = [
+                        ('CCX', 0, ccx_size),
+                        ('CDX', cdx_offset, len(data)),
+                    ]
+                else:
+                    sub_blocks = [(block_id, 0, len(data))]
+
+                for sub_id, start, end in sub_blocks:
+                    sub_data = data[start:end]
+                    stored, computed, match = check_block_crc(sub_data, sub_id)
+                    status = "OK" if match else "MISMATCH"
+                    icon = "+" if match else "!"
+                    print(f"    [{icon}] {sub_id}: stored=0x{stored:04X} computed=0x{computed:04X} {status}")
+
+                    if not match:
+                        if args.fix_crc:
+                            crc = crc16_ccitt(data[start:end-2])
+                            data[end-2] = (crc >> 8) & 0xFF
+                            data[end-1] = crc & 0xFF
+                            print(f"        Fixed CRC -> 0x{crc:04X}")
+                        elif not args.force:
+                            crc_ok = False
+
+            if not crc_ok:
+                print("\n[!] CRC mismatch. Use --fix-crc to repair or --force to ignore.")
+                return 1
+
+            if args.dry_run:
+                print("\n[DRY RUN] Validation complete. No changes made.")
+                for block_id, data, flash_start in jobs:
+                    flash_block(ser, block_id, data, flash_start, blocks, dry_run=True)
+                return 0
+
+        # --- online phase (device contact required) ---
+
         if args.baud == 'auto':
             print(f"\n[*] Probing device...")
-            baud = probe_baud(ser)
+            baud, device_bid = probe_baud(ser)
             if not baud:
                 print("[!] Device not responding at any known baud rate")
                 return 1
-            print(f"[+] Device responding at {baud} baud")
+            print(f"[+] Device responding at {baud} baud (BID: {device_bid})")
             ser.baudrate = baud
         else:
             init_baud = int(args.baud)
             ser.baudrate = init_baud
             print(f"\n[*] Connecting at {init_baud} baud...")
             _, resp = send_cmd(ser, "G S #BID", timeout=1.0, quiet=True)
-            if not any(b'BID' in r['payload'] for r in resp):
+            device_bid = _extract_bid(resp)
+            if not device_bid:
                 print(f"[!] No response at {init_baud} baud")
                 return 1
-            print(f"[+] Device responding at {init_baud} baud")
+            print(f"[+] Device responding at {init_baud} baud (BID: {device_bid})")
+
+        # if we couldn't resolve layout offline (standalone block file),
+        # use device BID now
+        if active_bid is None:
+            active_bid = device_bid
+            blocks = get_blocks(active_bid)
+            if not blocks:
+                if not args.yolo:
+                    print(f"[!] Unknown block layout for BID: {active_bid}")
+                    return 1
+                print(f"[!] --yolo: unknown BID {active_bid}")
+                return 1
+
+            if active_bid not in SUPPORTED_BIDS:
+                if not args.yolo:
+                    print(f"[!] BID {active_bid} is not supported")
+                    return 1
+                print(f"[!] --yolo: proceeding with non-whitelisted BID {active_bid}")
+
+            jobs = detect_input(file_data, args.block, args.include_bootloader, blocks)
+            if not jobs:
+                return 1
+
+            print(f"\n[*] Flash plan ({active_bid} layout):")
+            for block_id, data, flash_start in jobs:
+                blk = blocks[block_id]
+                print(f"    {block_id} ({blk['name']}): {len(data):,} bytes @ 0x{flash_start:08X}")
+
+            print(f"\n[*] CRC validation:")
+            crc_ok = True
+            for block_id, data, _ in jobs:
+                sub_blocks = [(block_id, 0, len(data))]
+                for sub_id, start, end in sub_blocks:
+                    sub_data = data[start:end]
+                    stored, computed, match = check_block_crc(sub_data, sub_id)
+                    status = "OK" if match else "MISMATCH"
+                    icon = "+" if match else "!"
+                    print(f"    [{icon}] {sub_id}: stored=0x{stored:04X} computed=0x{computed:04X} {status}")
+                    if not match:
+                        if args.fix_crc:
+                            crc = crc16_ccitt(data[start:end-2])
+                            data[end-2] = (crc >> 8) & 0xFF
+                            data[end-1] = crc & 0xFF
+                            print(f"        Fixed CRC -> 0x{crc:04X}")
+                        elif not args.force:
+                            crc_ok = False
+
+            if not crc_ok:
+                print("\n[!] CRC mismatch. Use --fix-crc to repair or --force to ignore.")
+                return 1
+
+            if args.dry_run:
+                print("\n[DRY RUN] Validation complete. No changes made.")
+                for block_id, data, flash_start in jobs:
+                    flash_block(ser, block_id, data, flash_start, blocks, dry_run=True)
+                return 0
+
+        # cross-flash check (needs both image and device BID)
+        if is_full_image and image_bid and image_bid != device_bid and not blx_only:
+            if not args.yolo:
+                print(f"[!] Cross-flash: image BID={image_bid}, device BID={device_bid}")
+                return 1
+            print(f"[!] --yolo: cross-flashing {image_bid} image onto {device_bid} device")
+            if not flashing_blx:
+                print(f"[!] WARNING: not replacing bootloader -- layout mismatch likely")
 
         if not args.no_enter:
             if ser.baudrate != 57600:
@@ -561,7 +719,7 @@ Examples:
                 time.sleep(0.5)
                 if ser.baudrate != 57600:
                     ser.baudrate = 57600
-                if not enter_bootloader(ser, 10):
+                if not enter_bootloader(ser, 30):
                     return 1
                 if args.baud == 'auto':
                     negotiate_best_baud(ser)
@@ -569,7 +727,7 @@ Examples:
                     target = int(args.baud)
                     if target != ser.baudrate:
                         switch_baud(ser, target)
-            if not flash_block(ser, block_id, data, flash_start):
+            if not flash_block(ser, block_id, data, flash_start, blocks):
                 print(f"\n[!] Failed to flash {block_id}")
                 return 1
 
@@ -584,6 +742,5 @@ Examples:
 
     finally:
         ser.close()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
