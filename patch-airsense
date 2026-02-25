@@ -69,16 +69,37 @@ check_hash() {
 cp "$IN" "$OUT" || die "$OUT: copy failed"
 
 patch_tamper() {
-    # i've never seen bootloader version other than SX577-0200, so no point in doing safety checks
+    # All firmware versions across airsense and aircurve devices have BID=SX577-0200
+    # But Lumis running on SX585-0200 is unique
 
-    echo -n "Patching firmware integrity checks... "
-    # Skip BLX check
-    printf '\x01\x20\xc0\x46' | patch 0x310e && echo -n "BLX ok " || die "patch failed (BLX)"
-    # Skip CCX check
-    printf '\x00\x20\xc0\x46' | patch 0x313e && echo -n "CCX ok " || die "patch failed (CCX)"
-    # Skip CDX check
-    printf '\x00\x20\xc0\x46' | patch 0x3130 && echo -n "CDX ok " || die "patch failed (CDX)"
-    echo
+    local version=$(dd if="$OUT" bs=1 skip=$((0x3f80)) count=10 2>/dev/null)
+
+    case "$version" in
+        "SX577-0200")
+            echo -n "Patching firmware integrity checks... "
+            # Skip BLX check
+            printf '\x01\x20\xc0\x46' | patch 0x310e && echo -n "BLX ok " || die "patch failed (BLX)"
+            # Skip CCX check
+            printf '\x00\x20\xc0\x46' | patch 0x313e && echo -n "CCX ok " || die "patch failed (CCX)"
+            # Skip CDX check
+            printf '\x00\x20\xc0\x46' | patch 0x3130 && echo -n "CDX ok " || die "patch failed (CDX)"
+            echo
+            ;;
+        "SX585-0200")
+            # Skip BLX check
+            printf '\x01\x20\xc0\x46' | patch 0x316e && echo -n "BLX ok " || die "patch failed (BLX)"
+            # Skip CCX check
+            printf '\x00\x20\xc0\x46' | patch 0x319e && echo -n "CCX ok " || die "patch failed (CCX)"
+            # Skip CDX check
+            printf '\x00\x20\xc0\x46' | patch 0x3190 && echo -n "CDX ok " || die "patch failed (CDX)"
+            echo
+            ;;
+        *)
+            die "Unknown bootloader version: '$version'"
+            # or try previous method if you know what you're doing
+            # printf '\xc0\x46' | patch 0xf0 || die "startup patch failed"
+            ;;
+    esac
 }
 
 patch_strings() {
