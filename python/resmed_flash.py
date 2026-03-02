@@ -297,7 +297,8 @@ def fix_block_crc(data: bytearray, block_id: str) -> int:
 
 
 
-def detect_input(file_data: bytes, block_args: list, include_bootloader: bool, blocks: dict):
+def detect_input(file_data: bytes, block_args: list, include_bootloader: bool, blocks: dict,
+                 raw: bool = False):
     """
     Determine what to flash based on file size and --block argument(s).
     Returns list of (block_id, data_bytes, flash_start_addr) tuples.
@@ -338,6 +339,8 @@ def detect_input(file_data: bytes, block_args: list, include_bootloader: bool, b
         if is_full_image:
             data = file_data[blk['file_offset']:blk['file_offset'] + blk['size']]
         elif len(unique) == 1 and fsize == blk['size']:
+            data = file_data
+        elif raw and len(unique) == 1 and fsize <= blk['size']:
             data = file_data
         else:
             print(f"[!] Need full image ({FULL_IMAGE_SIZE} bytes) for this operation")
@@ -493,6 +496,7 @@ Examples:
     parser.add_argument('--no-reset', action='store_true', help='Do not reset device after flash')
     parser.add_argument('--no-enter', action='store_true', help='Skip bootloader entry')
     parser.add_argument('--info', action='store_true', help='Show device info and exit')
+    parser.add_argument('--raw', action='store_true', help='Flash raw image smaller than block size')
     parser.add_argument('--yolo', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
 
@@ -511,6 +515,12 @@ Examples:
 
         is_full_image = (len(file_data) == FULL_IMAGE_SIZE)
         flashing_blx = args.include_bootloader
+
+        if args.raw:
+            if not args.block or len(args.block) != 1:
+                parser.error("--raw requires exactly one --block")
+            if args.block[0].lower() == 'all':
+                parser.error("--raw cannot be used with --block all")
 
         image_bid = None
         if is_full_image:
@@ -564,7 +574,8 @@ Examples:
                     if not args.yolo:
                         return 1
 
-            jobs = detect_input(file_data, args.block, args.include_bootloader, blocks)
+            jobs = detect_input(file_data, args.block, args.include_bootloader, blocks,
+                               raw=args.raw)
             if not jobs:
                 return 1
 
@@ -573,38 +584,41 @@ Examples:
                 blk = blocks[block_id]
                 print(f"    {block_id} ({blk['name']}): {len(data):,} bytes @ 0x{flash_start:08X}")
 
-            print(f"\n[*] CRC validation:")
-            crc_ok = True
-            for block_id, data, _ in jobs:
-                if block_id == 'CMX':
-                    ccx_size = blocks['CCX']['size']
-                    cdx_offset = blocks['CDX']['file_offset'] - blocks['CMX']['file_offset']
-                    sub_blocks = [
-                        ('CCX', 0, ccx_size),
-                        ('CDX', cdx_offset, len(data)),
-                    ]
-                else:
-                    sub_blocks = [(block_id, 0, len(data))]
+            if args.raw:
+                print(f"\n[*] CRC validation: skipped (raw mode)")
+            else:
+                print(f"\n[*] CRC validation:")
+                crc_ok = True
+                for block_id, data, _ in jobs:
+                    if block_id == 'CMX':
+                        ccx_size = blocks['CCX']['size']
+                        cdx_offset = blocks['CDX']['file_offset'] - blocks['CMX']['file_offset']
+                        sub_blocks = [
+                            ('CCX', 0, ccx_size),
+                            ('CDX', cdx_offset, len(data)),
+                        ]
+                    else:
+                        sub_blocks = [(block_id, 0, len(data))]
 
-                for sub_id, start, end in sub_blocks:
-                    sub_data = data[start:end]
-                    stored, computed, match = check_block_crc(sub_data, sub_id)
-                    status = "OK" if match else "MISMATCH"
-                    icon = "+" if match else "!"
-                    print(f"    [{icon}] {sub_id}: stored=0x{stored:04X} computed=0x{computed:04X} {status}")
+                    for sub_id, start, end in sub_blocks:
+                        sub_data = data[start:end]
+                        stored, computed, match = check_block_crc(sub_data, sub_id)
+                        status = "OK" if match else "MISMATCH"
+                        icon = "+" if match else "!"
+                        print(f"    [{icon}] {sub_id}: stored=0x{stored:04X} computed=0x{computed:04X} {status}")
 
-                    if not match:
-                        if args.fix_crc:
-                            crc = crc16_ccitt(data[start:end-2])
-                            data[end-2] = (crc >> 8) & 0xFF
-                            data[end-1] = crc & 0xFF
-                            print(f"        Fixed CRC -> 0x{crc:04X}")
-                        elif not args.force:
-                            crc_ok = False
+                        if not match:
+                            if args.fix_crc:
+                                crc = crc16_ccitt(data[start:end-2])
+                                data[end-2] = (crc >> 8) & 0xFF
+                                data[end-1] = crc & 0xFF
+                                print(f"        Fixed CRC -> 0x{crc:04X}")
+                            elif not args.force:
+                                crc_ok = False
 
-            if not crc_ok:
-                print("\n[!] CRC mismatch. Use --fix-crc to repair or --force to ignore.")
-                return 1
+                if not crc_ok:
+                    print("\n[!] CRC mismatch. Use --fix-crc to repair or --force to ignore.")
+                    return 1
 
             if args.dry_run:
                 print("\n[DRY RUN] Validation complete. No changes made.")
@@ -651,7 +665,8 @@ Examples:
                     return 1
                 print(f"[!] --yolo: proceeding with non-whitelisted BID {active_bid}")
 
-            jobs = detect_input(file_data, args.block, args.include_bootloader, blocks)
+            jobs = detect_input(file_data, args.block, args.include_bootloader, blocks,
+                               raw=args.raw)
             if not jobs:
                 return 1
 
@@ -660,28 +675,31 @@ Examples:
                 blk = blocks[block_id]
                 print(f"    {block_id} ({blk['name']}): {len(data):,} bytes @ 0x{flash_start:08X}")
 
-            print(f"\n[*] CRC validation:")
-            crc_ok = True
-            for block_id, data, _ in jobs:
-                sub_blocks = [(block_id, 0, len(data))]
-                for sub_id, start, end in sub_blocks:
-                    sub_data = data[start:end]
-                    stored, computed, match = check_block_crc(sub_data, sub_id)
-                    status = "OK" if match else "MISMATCH"
-                    icon = "+" if match else "!"
-                    print(f"    [{icon}] {sub_id}: stored=0x{stored:04X} computed=0x{computed:04X} {status}")
-                    if not match:
-                        if args.fix_crc:
-                            crc = crc16_ccitt(data[start:end-2])
-                            data[end-2] = (crc >> 8) & 0xFF
-                            data[end-1] = crc & 0xFF
-                            print(f"        Fixed CRC -> 0x{crc:04X}")
-                        elif not args.force:
-                            crc_ok = False
+            if args.raw:
+                print(f"\n[*] CRC validation: skipped (raw mode)")
+            else:
+                print(f"\n[*] CRC validation:")
+                crc_ok = True
+                for block_id, data, _ in jobs:
+                    sub_blocks = [(block_id, 0, len(data))]
+                    for sub_id, start, end in sub_blocks:
+                        sub_data = data[start:end]
+                        stored, computed, match = check_block_crc(sub_data, sub_id)
+                        status = "OK" if match else "MISMATCH"
+                        icon = "+" if match else "!"
+                        print(f"    [{icon}] {sub_id}: stored=0x{stored:04X} computed=0x{computed:04X} {status}")
+                        if not match:
+                            if args.fix_crc:
+                                crc = crc16_ccitt(data[start:end-2])
+                                data[end-2] = (crc >> 8) & 0xFF
+                                data[end-1] = crc & 0xFF
+                                print(f"        Fixed CRC -> 0x{crc:04X}")
+                            elif not args.force:
+                                crc_ok = False
 
-            if not crc_ok:
-                print("\n[!] CRC mismatch. Use --fix-crc to repair or --force to ignore.")
-                return 1
+                if not crc_ok:
+                    print("\n[!] CRC mismatch. Use --fix-crc to repair or --force to ignore.")
+                    return 1
 
             if args.dry_run:
                 print("\n[DRY RUN] Validation complete. No changes made.")
