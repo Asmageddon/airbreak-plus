@@ -243,9 +243,13 @@ static void eeprom_wait_ready(void)
 
 static void eeprom_wren(void)
 {
+    // M95M02 requires tSHSL >= 100ns between cs_high and next cs_low.
+    // At 168MHz, back-to-back cs_high/cs_low is ~20ns - too fast.
+    for (volatile int i = 0; i < 20; i++) ;
     cs_low();
     spi1_xfer(EE_WREN);
     cs_high();
+    for (volatile int i = 0; i < 20; i++) ;
 }
 
 static void eeprom_unprotect(void)
@@ -673,8 +677,10 @@ static void cmd_erase(void)
 {
     u8 page[EEPROM_PAGE_SIZE];
     memset(page, 0xFF, EEPROM_PAGE_SIZE);
+
     for (u32 a = 0; a < EEPROM_SIZE; a += EEPROM_PAGE_SIZE)
         eeprom_write_page(a, page, EEPROM_PAGE_SIZE);
+
     send_ack();
 }
 
